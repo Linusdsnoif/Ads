@@ -2,7 +2,8 @@ name: Weekly Product Generation
 
 on:
   schedule:
-    - cron: '0 * * * *'   # every hour, on the hour
+    # Runs at 3:00 AM UTC on Monday (which is 8:00 PM Sunday in San Diego)
+    - cron: '0 3 * * 1'   
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Notice the -u is removed so new files are properly captured
           git add output_models/ output_descriptions/
           
           git commit -m "Auto-generated new products for the week" || echo "No changes to commit"

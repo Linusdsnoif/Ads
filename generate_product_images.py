@@ -512,14 +512,15 @@ def process_product(
 def generate_descriptions(saved_paths: list[Path], client: Client):
     log.info("=" * 60)
     log.info("Starting automated social media description generation...")
-    
+
     output_folder = Path("output_descriptions")
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Clean up old txt files for a fresh batch
-    for old_file in output_folder.glob("*.txt"):
-        old_file.unlink()
-    log.info(f"Cleared old files from '{output_folder}'.")
+    # NOTE: We intentionally do NOT wipe old .txt files here anymore.
+    # Image filenames always get a fresh incrementing index (next_output_index),
+    # so new captions never collide with old ones. Wiping unconditionally used
+    # to delete captions belonging to images that were still pending/retrying
+    # from a prior run in social_publisher.py, permanently orphaning them.
 
     PRODUCT_LINKS = {
         "Automatic Nail Clipper": "https://luffcabo.com/products/electric-nail-clipper",
@@ -563,24 +564,24 @@ def generate_descriptions(saved_paths: list[Path], client: Client):
     for i, img_path in enumerate(saved_paths):
         # 1. Parse the generated file name cleanly
         raw_name = img_path.stem  # e.g., modeled_Baby_Nail_File_ARABIC_1
-        
+
         if raw_name.startswith("modeled_"):
             raw_name = raw_name[len("modeled_"):]
-            
+
         name_parts = raw_name.split('_')
-        
+
         # Remove the numeric index at the end
         if name_parts[-1].isdigit():
             name_parts = name_parts[:-1]
-            
+
         # Detect if it's the Arabic variant and remove the tag
         is_arabic = False
         if len(name_parts) > 0 and name_parts[-1] == "ARABIC":
             is_arabic = True
             name_parts = name_parts[:-1]
-            
+
         base_clean_key = " ".join(name_parts)
-        
+
         # Link resolution
         product_link = PRODUCT_LINKS.get(
             base_clean_key,
@@ -614,12 +615,12 @@ def generate_descriptions(saved_paths: list[Path], client: Client):
                 lang = selection["language"]
                 day = selection["day"]
                 city = random.choice(selection["cities"])
-            
+
             casual_count += 1
 
         log.info(f"Generating caption for: {img_path.name}")
         log.info(f"Targeting: {lang} | {city}, {country} | {day} 7:00 AM")
-        
+
         try:
             img = Image.open(img_path)
         except Exception as e:
@@ -681,31 +682,35 @@ def generate_descriptions(saved_paths: list[Path], client: Client):
             try:
                 log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
                 response = client.models.generate_content(
-                    model='gemini-3.5-flash', # Or replace with your specific string if needed
+                    model='gemini-3.5-flash',  # Or replace with your specific string if needed
                     contents=[text_prompt, img]
                 )
-                
+
                 description = response.text
-                
-                safe_country = country.replace(" ", "")
-                txt_filename = f"desc_{img_path.stem}_{lang}_{safe_country}.txt"
+
+                # IMPORTANT: filename must exactly match the image's stem
+                # (e.g. "modeled_Baby_Nail_File_1.txt") so social_publisher.py's
+                # exact-match lookup (text_folder / f"{base_name}.txt") can find it.
+                # The old "desc_..._{lang}_{country}.txt" naming never matched,
+                # which meant the publisher skipped every single generated post.
+                txt_filename = f"{img_path.stem}.txt"
                 txt_output_path = output_folder / txt_filename
-                
+
                 with open(txt_output_path, "w", encoding="utf-8") as text_file:
                     text_file.write(description)
-                    
+
                 log.info(f"  - Saved caption to: {txt_output_path}")
-                break # Break out of retry loop on success
-                
+                break  # Break out of retry loop on success
+
             except Exception as e:
                 log.warning(f"  ⚠️ Attempt {attempt} failed: {e}")
                 if attempt < max_manual_retries:
-                    sleep_time = attempt * 5 
+                    sleep_time = attempt * 5
                     time.sleep(sleep_time)
                 else:
                     log.error(f"  ❌ All manual retry attempts exhausted for {img_path.name}.")
 
- 
+
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
@@ -729,7 +734,6 @@ def main() -> int:
 
     api_key = os.environ.get("GOOGLE_API_KEY")
 
-
     if not api_key:
         log.error("No API key provided. Set GOOGLE_API_KEY or enter it when prompted.")
         return 1
@@ -748,7 +752,7 @@ def main() -> int:
 
     # Grab 4 UNIQUE products from the list
     selected_products = random.sample(PRODUCT_LIST, total_needed)
-    
+
     # Assign the first 3 to casual, and the 4th to Arabic
     casual_products = selected_products[: args.num_casual]
     arabic_product = None if args.no_arabic else selected_products[args.num_casual]
@@ -770,7 +774,7 @@ def main() -> int:
         )
         if path:
             saved_paths.append(path)
-        
+
         # Cooldown between different products
         if i < len(casual_products) or arabic_product:
             log.info("Cooling down %.0fs before the next product...\n", args.cooldown)
@@ -792,7 +796,7 @@ def main() -> int:
 
     if saved_paths:
         generate_descriptions(saved_paths, client)
-        
+
     return 0 if len(saved_paths) == total_needed else 2
 
 if __name__ == "__main__":
