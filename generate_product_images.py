@@ -728,11 +728,7 @@ def main() -> int:
         random.seed(args.seed)
 
     api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        try:
-            api_key = getpass.getpass("Enter your Google API key (input hidden): ").strip()
-        except Exception:
-            api_key = input("Enter your Google API key: ").strip()
+
 
     if not api_key:
         log.error("No API key provided. Set GOOGLE_API_KEY or enter it when prompted.")
