@@ -1,0 +1,51 @@
+name: Weekly Product Generation
+
+on:
+  schedule:
+    # 03:00 UTC Saturday = 8:00 PM Friday in San Diego (7:00 PM in winter)
+    - cron: '0 3 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-generation
+  cancel-in-progress: false
+
+jobs:
+  generate-content:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-dotenv pillow google-genai tzdata
+
+      - name: Run image & caption generation
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python generate_product_images.py
+
+      # always(): if 1 of 4 images fails the script exits non-zero, but the
+      # other 3 (and the failed slot's schedule file) must still be saved.
+      - name: Commit and push new files
+        if: always()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add output_models/ output_descriptions/ output_schedule/
+          git commit -m "Weekly batch: new images awaiting review" || { echo "No changes"; exit 0; }
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push && break
+            echo "Push rejected, retrying in 10s..."; sleep 10
+          done

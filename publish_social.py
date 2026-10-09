@@ -1,132 +1,161 @@
+"""
+publish_social.py: runs hourly from GitHub Actions.
+
+Posts are driven by output_schedule/<batch_id>_<slot>.json (written by
+generate_product_images.py), NOT by scanning output_models/. A post goes out
+only when ALL of these are true:
+  * its JSON says "review": "approved"
+  * the current time is at/after its scheduled_utc (7:00 AM local in its city)
+  * it is no more than PUBLISH_GRACE_HOURS late (default 6)
+
+Because each post has an absolute date, next week's Tuesday post can never be
+mixed up with this week's. An image with no schedule JSON is never posted.
+"""
 import os
+import sys
 import time
 import json
-import requests
-import base64
 import re
 import datetime
-
-from zoneinfo import ZoneInfo
-from geopy.geocoders import Nominatim
-from timezonefinder import TimezoneFinder
 from pathlib import Path
+
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
+import boto3
+from botocore.config import Config
+
 # ==========================================
-# 1. CREDENTIALS & IDs
+# 1. CREDENTIALS & CONFIG
 # ==========================================
 META_ACCESS_TOKEN = os.environ.get("META_ACCESS_TOKEN")
 FB_PAGE_ID = os.environ.get("FB_PAGE_ID")
 IG_USER_ID = os.environ.get("IG_USER_ID")
-
 THREADS_ACCESS_TOKEN = os.environ.get("THREADS_ACCESS_TOKEN")
 THREADS_USER_ID = os.environ.get("THREADS_USER_ID")
 
-geolocator = Nominatim(user_agent="luffcabo_social_publisher")
-tf = TimezoneFinder()
+R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+R2_PUBLIC_URL = (os.environ.get("R2_PUBLIC_URL") or "").rstrip("/")
+
+GRACE_HOURS = float(os.environ.get("PUBLISH_GRACE_HOURS", "6"))
+PLATFORMS = ["facebook", "instagram_feed", "threads"]
+MAX_ATTEMPTS = 3
+
+SCHEDULE_DIR = Path("output_schedule")
+IMAGES_DIR = Path("output_models")
+CAPTIONS_DIR = Path("output_descriptions")
+
+REQUIRED_ENV = [
+    "META_ACCESS_TOKEN", "FB_PAGE_ID", "IG_USER_ID", "THREADS_ACCESS_TOKEN", "THREADS_USER_ID",
+    "R2_ENDPOINT_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME", "R2_PUBLIC_URL",
+]
+
+_r2_client = None
 
 
-def get_timezone_from_location(location_name: str) -> str:
-    """Converts a text string into a timezone string, with rate limit protection."""
-    if location_name == "UTC":
-        return "UTC"
-
-    try:
-        # Rate limit protection for Nominatim (1 req/sec policy)
-        time.sleep(1.5)
-        location = geolocator.geocode(location_name)
-        if location:
-            tz_name = tf.timezone_at(lng=location.longitude, lat=location.latitude)
-            return tz_name or "UTC"
-    except Exception as e:
-        print(f"Geocoding error for {location_name}: {e}")
-    return "UTC"
+def r2():
+    global _r2_client
+    if _r2_client is None:
+        _r2_client = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT_URL,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=Config(signature_version="s3v4"),
+        )
+    return _r2_client
 
 
 # ==========================================
 # 2. HELPER FUNCTIONS
 # ==========================================
-def extract_post_data(raw_text: str):
-    day_of_week = "monday"
-    location_name = "UTC"
-
-    schedule_match = re.search(r"Schedule:\s*([A-Za-z]+)", raw_text)
-    if schedule_match:
-        day_of_week = schedule_match.group(1).lower()
-
-    loc_match = re.search(r"Location Tag:\s*(.+)", raw_text)
-    if loc_match:
-        location_name = loc_match.group(1).strip()
-
-    caption = raw_text
-    alt_text = ""
-    if "Caption:" in raw_text:
-        parts = raw_text.split("Caption:")[1]
-        if "Alt Text:" in parts:
-            caption = parts.split("Alt Text:")[0].strip()
-            alt_text = parts.split("Alt Text:")[1].strip()
-        else:
-            caption = parts.strip()
-
-    return day_of_week, location_name, caption, alt_text
+def extract_caption(raw_text: str) -> tuple[str, str]:
+    """Pull the caption and alt text out of the Gemini output. Tolerates **bold** labels."""
+    text = raw_text.replace("**", "")
+    parts = re.split(r"^\s*Caption\s*:\s*", text, maxsplit=1, flags=re.M | re.I)
+    if len(parts) < 2:
+        print("     ⚠️ No 'Caption:' label found; posting the whole text file as the caption.")
+        body = text
+    else:
+        body = parts[1]
+    alt_parts = re.split(r"^\s*Alt Text\s*:\s*", body, maxsplit=1, flags=re.M | re.I)
+    caption = alt_parts[0].strip()
+    alt_text = alt_parts[1].strip() if len(alt_parts) == 2 else ""
+    return caption, alt_text
 
 
 def upload_to_public_url(local_image_path: Path) -> str:
-    print(f"Uploading {local_image_path.name} to ImgBB...")
-    imgbb_api_key = os.environ.get("IMGBB_API_KEY")
-    if not imgbb_api_key:
-        raise ValueError("IMGBB_API_KEY is missing from your .env file.")
-
-    with open(local_image_path, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
-
-    url = "https://api.imgbb.com/1/upload"
-    payload = {
-        "key": imgbb_api_key,
-        "image": encoded_string,
-        "expiration": 3600  # 1 hour, to survive retries/polling
-    }
-
-    response = requests.post(url, data=payload, timeout=30)
-    if response.status_code == 200:
-        public_url = response.json()["data"]["url"]
-        print(f"  -> Upload successful! Temporary URL: {public_url}")
-        return public_url
-    else:
-        raise RuntimeError(f"ImgBB upload failed: {response.text}")
+    """Uploads an image to Cloudflare R2 and returns a permanent public URL."""
+    print(f"Uploading {local_image_path.name} to Cloudflare R2...")
+    object_name = f"posts/{int(time.time())}_{local_image_path.name}"
+    try:
+        r2().upload_file(
+            str(local_image_path), R2_BUCKET_NAME, object_name,
+            ExtraArgs={"ContentType": "image/jpeg"},
+        )
+    except Exception as e:
+        raise RuntimeError(f"Cloudflare R2 upload failed: {e}")
+    public_url = f"{R2_PUBLIC_URL}/{object_name}"
+    print(f"  -> Upload successful! Permanent URL: {public_url}")
+    return public_url
 
 
 def get_meta_location_id(location_name: str):
-    """Searches Meta and strictly verifies the result is a physical location."""
     if location_name == "UTC":
         return None
 
-    print(f"  -> Searching Meta for location ID: {location_name}")
+    # Strip out the country name to help Meta's search engine
+    search_query = location_name.split(",")[0].strip()
+    print(f"  -> Searching Meta for location ID using query: '{search_query}'")
+    
     url = "https://graph.facebook.com/v19.0/pages/search"
-    params = {
-        "q": location_name,
-        "fields": "id,name,location",
-        "access_token": META_ACCESS_TOKEN
-    }
+    params = {"q": search_query, "fields": "id,name,location", "access_token": META_ACCESS_TOKEN}
 
     try:
         response = requests.get(url, params=params, timeout=30)
         data = response.json()
-
         if "data" in data:
-            valid_places = [place for place in data["data"] if "location" in place]
-            if valid_places:
-                best_match = valid_places[0]
-                print(f"     ✅ Found valid Meta Place: {best_match.get('name')} (ID: {best_match['id']})")
-                return best_match["id"]
+            for place in data["data"]:
+                if "location" in place: # Must have a physical address to work on IG
+                    print(f"     ✅ Found Meta Place: {place.get('name')} (ID: {place['id']})")
+                    return place["id"]
 
-        print(f"     ⚠️ No verified Meta Place found for '{location_name}'. Posting without geotag.")
+        print(f"     ⚠️ No verified Meta Place found for '{search_query}'. Posting without geotag.")
         return None
-
     except Exception as e:
         print(f"     ❌ Location search failed: {e}")
+        return None
+ 
+
+
+def get_threads_location_id(location_name: str):
+    if location_name == "UTC":
+        return None
+
+    search_query = location_name.split(",")[0].strip()
+    print(f"  -> Searching Threads for location ID using query: '{search_query}'")
+
+    url = "https://graph.threads.net/v1.0/location_search"
+    params = {"q": search_query, "access_token": THREADS_ACCESS_TOKEN}
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        results = data.get("data", [])
+        if results:
+            best = results[0]
+            print(f"     ✅ Found Threads location: {best.get('name')} (ID: {best['id']})")
+            return str(best["id"])
+            
+        print(f"     ⚠️ No Threads location found. Posting without geotag.")
+        return None
+    except Exception as e:
+        print(f"     ❌ Threads location search failed: {e}")
         return None
 
 
@@ -159,49 +188,6 @@ def poll_container_status(container_id: str, platform: str, token: str, max_retr
 
     print("     ❌ Container processing timed out.")
     return False
-
-
-PLATFORMS = ["facebook", "instagram_feed", "threads"]
-MAX_ATTEMPTS = 3  # after this many attempt-rounds without full success, stop retrying
-
-
-def status_path_for(status_folder: Path, base_name: str) -> Path:
-    return status_folder / f"{base_name}.json"
-
-
-def load_status(status_folder: Path, base_name: str) -> dict:
-    """Loads which platforms already succeeded for this post, plus retry bookkeeping."""
-    path = status_path_for(status_folder, base_name)
-    default = {p: False for p in PLATFORMS}
-    default["attempts"] = 0
-    default["stopped"] = False
-
-    if path.exists():
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            merged = dict(default)
-            for p in PLATFORMS:
-                merged[p] = bool(data.get(p, False))
-            merged["attempts"] = int(data.get("attempts", 0))
-            merged["stopped"] = bool(data.get("stopped", False))
-            return merged
-        except Exception as e:
-            print(f"     ⚠️ Could not read status file for {base_name}, starting fresh: {e}")
-    return default
-
-
-def save_status(status_folder: Path, base_name: str, status: dict):
-    status_folder.mkdir(exist_ok=True)
-    path = status_path_for(status_folder, base_name)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(status, f, indent=2)
-
-
-def clear_status(status_folder: Path, base_name: str):
-    path = status_path_for(status_folder, base_name)
-    if path.exists():
-        path.unlink()
 
 
 # Each publisher function now RETURNS True/False instead of only printing,
@@ -261,7 +247,7 @@ def post_to_instagram_feed(image_url: str, caption: str, alt_text: str, location
         return False
 
 
-def post_to_threads(image_url: str, caption: str, alt_text: str) -> bool:
+def post_to_threads(image_url: str, caption: str, alt_text: str, location_id: str = None) -> bool:
     print("  -> Posting to Threads...")
     container_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
     container_payload = {"media_type": "IMAGE", "image_url": image_url, "text": caption,
@@ -269,6 +255,8 @@ def post_to_threads(image_url: str, caption: str, alt_text: str) -> bool:
 
     if alt_text:
         container_payload["alt_text"] = alt_text
+    if location_id:
+        container_payload["location_id"] = location_id
 
     try:
         container_res = requests.post(container_url, data=container_payload, timeout=30).json()
@@ -301,127 +289,105 @@ def post_to_threads(image_url: str, caption: str, alt_text: str) -> bool:
 # ==========================================
 # 4. MAIN ORCHESTRATOR
 # ==========================================
-def publish_for_today():
+def save_entry(path: Path, entry: dict):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(entry, f, indent=2, ensure_ascii=False)
+
+
+def publish_due_posts() -> int:
     print("=== Starting Social Publisher Hourly Check ===")
 
-    images_folder = Path("output_models")
-    text_folder = Path("output_descriptions")
-    status_folder = Path("output_status")  # sidecar per-post platform status, for retries
+    missing = [k for k in REQUIRED_ENV if not os.environ.get(k)]
+    if missing:
+        print(f"❌ Missing environment variables: {missing}. Add them as repository secrets.")
+        return 1
 
-    if not images_folder.exists() or not text_folder.exists():
-        print("Required folders do not exist yet. Exiting.")
-        return
+    if not SCHEDULE_DIR.exists():
+        print("No output_schedule/ folder yet. Nothing to do.")
+        return 0
 
-    valid_extensions = {".jpg", ".jpeg", ".png"}
-    images = [p for p in images_folder.iterdir() if p.suffix.lower() in valid_extensions]
+    now = datetime.datetime.now(datetime.timezone.utc)
+    posted_any = False
 
-    if not images:
-        print("No images found in output_models/. Exiting.")
-        return
-
-    matched_any = False
-
-    for img_path in images:
-        base_name = img_path.stem
-        # Exact match only: avoids "shirt1" matching "shirt10.txt" via a wildcard glob
-        text_path = text_folder / f"{base_name}.txt"
-
-        if not text_path.exists():
-            print(f"Skipping {img_path.name} - no matching text file found ({text_path.name}).")
+    for path in sorted(SCHEDULE_DIR.glob("*.json")):
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"⚠️ Could not read {path.name}: {e}")
             continue
 
-        with open(text_path, "r", encoding="utf-8") as f:
-            raw_text = f.read()
+        pub = entry["publish"]
+        label = f"{path.stem} [{entry['product_name']} -> {entry['city']}, {entry['country']}]"
 
-        day_of_week, location_name, caption, alt_text = extract_post_data(raw_text)
-        target_timezone = get_timezone_from_location(location_name)
+        if pub.get("done") or pub.get("stopped") or pub.get("missed"):
+            continue
+
+        sched = datetime.datetime.fromisoformat(entry["scheduled_utc"])
+        if now < sched:
+            hrs = (sched - now).total_seconds() / 3600
+            print(f"{label}: due {entry['scheduled_local'][:16]} local ({hrs:.0f}h), review={entry['review']}")
+            continue
+
+        if now > sched + datetime.timedelta(hours=GRACE_HOURS):
+            pub["missed"] = True
+            save_entry(path, entry)
+            print(f"🛑 {label}: MISSED its window (review={entry['review']}, "
+                  f"posted so far={[p for p in PLATFORMS if pub[p]]}). Not posting. "
+                  f"To post it anyway, set a new scheduled_utc and missed=false.")
+            continue
+
+        if entry["review"] != "approved":
+            print(f"⏸️  {label}: due now but review={entry['review']}. Waiting for approval "
+                  f"(window closes {GRACE_HOURS:.0f}h after 7 AM local).")
+            continue
+
+        img_path = IMAGES_DIR / (entry["image"] or "")
+        txt_path = CAPTIONS_DIR / (entry["caption"] or "")
+        if not entry["image"] or not img_path.is_file() or not entry["caption"] or not txt_path.is_file():
+            print(f"❌ {label}: approved but image/caption file is missing. Skipping.")
+            continue
+
+        caption, alt_text = extract_caption(txt_path.read_text(encoding="utf-8"))
+        location_name = f"{entry['city']}, {entry['country']}"
+        pending = [p for p in PLATFORMS if not pub[p]]
+        pub["attempts"] += 1
+        posted_any = True
+        print(f"\n--- Posting {label}. Pending: {pending} (attempt {pub['attempts']}/{MAX_ATTEMPTS}) ---")
 
         try:
-            region_time = datetime.datetime.now(ZoneInfo(target_timezone))
-            region_day = region_time.strftime("%A").lower()
-            region_hour = region_time.hour
-
-            print(f"Checking {img_path.name} | Target: {location_name} ({target_timezone}) | "
-                  f"Local Time: {region_day.capitalize()} {region_hour}:00")
-
-            if region_day == day_of_week and region_hour >= 7:
-                matched_any = True
-
-                status = load_status(status_folder, base_name)
-
-                if status["stopped"]:
-                    print(f"  -> {img_path.name} already hit the {MAX_ATTEMPTS}-attempt limit. "
-                          f"Leaving files in place, not retrying.")
-                    continue
-
-                pending = [p for p in PLATFORMS if not status[p]]
-
-                if not pending:
-                    # Shouldn't normally happen (files get deleted on full success),
-                    # but guards against a stale status file left behind.
-                    print(f"  -> {img_path.name} already fully posted per status file. Cleaning up.")
-                    img_path.unlink(missing_ok=True)
-                    text_path.unlink(missing_ok=True)
-                    clear_status(status_folder, base_name)
-                    continue
-
-                print(f"\n--- Time to post {img_path.name} for {location_name}. "
-                      f"Still pending: {pending} (attempt {status['attempts'] + 1}/{MAX_ATTEMPTS}) ---")
-
-                status["attempts"] += 1
-
-                # Re-upload every run: the ImgBB link expires and a fresh URL is
-                # needed whether this is the first attempt or a retry.
-                public_image_url = upload_to_public_url(img_path)
-
-                if "facebook" in pending:
-                    status["facebook"] = post_to_facebook(public_image_url, caption)
-
-                if "instagram_feed" in pending:
-                    meta_location_id = get_meta_location_id(location_name)
-                    status["instagram_feed"] = post_to_instagram_feed(
-                        public_image_url, caption, alt_text, location_id=meta_location_id
-                    )
-
-                if "threads" in pending:
-                    status["threads"] = post_to_threads(public_image_url, caption, alt_text)
-
-                print(f"--- Status for {img_path.name}: {status} ---")
-
-                if all(status[p] for p in PLATFORMS):
-                    # Only delete the source files once every platform confirms success
-                    img_path.unlink()
-                    text_path.unlink()
-                    clear_status(status_folder, base_name)
-                    print(f"     🗑️ All platforms succeeded. Deleted: {img_path.name} and {text_path.name}")
-                elif status["attempts"] >= MAX_ATTEMPTS:
-                    # Give up on this post: stop retrying, but keep the files
-                    # untouched for manual review instead of deleting them.
-                    status["stopped"] = True
-                    save_status(status_folder, base_name, status)
-                    still_failing = [p for p in PLATFORMS if not status[p]]
-                    print(f"     🛑 Reached max retries ({MAX_ATTEMPTS}) with {still_failing} still failing. "
-                          f"Stopping retries for {img_path.name}; files kept as-is for manual review.")
-                else:
-                    # Persist progress and leave the source files in place.
-                    # The next scheduled run (same day, still within the >=7am
-                    # window) will retry only the platforms still marked False.
-                    save_status(status_folder, base_name, status)
-                    still_failing = [p for p in PLATFORMS if not status[p]]
-                    print(f"     ⏳ Still failing on: {still_failing}. "
-                          f"Progress saved to {status_folder}/{base_name}.json — "
-                          f"will retry automatically on the next run.")
-
-                time.sleep(15)
-            else:
-                print("  -> Not time yet. Skipping.")
-
+            public_image_url = upload_to_public_url(img_path)
+            if "facebook" in pending:
+                pub["facebook"] = post_to_facebook(public_image_url, caption)
+            if "instagram_feed" in pending:
+                pub["instagram_feed"] = post_to_instagram_feed(
+                    public_image_url, caption, alt_text, location_id=get_meta_location_id(location_name))
+            if "threads" in pending:
+                pub["threads"] = post_to_threads(
+                    public_image_url, caption, alt_text, location_id=get_threads_location_id(location_name))
         except Exception as e:
-            print(f"Error processing {img_path.name}: {e}")
+            print(f"     ❌ Error while posting: {e}")
 
-    if not matched_any:
-        print("\nNo product posts were scheduled to run at this hour.")
+        if all(pub[p] for p in PLATFORMS):
+            pub["done"] = True
+            pub["posted_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            img_path.unlink(missing_ok=True)
+            txt_path.unlink(missing_ok=True)
+            print(f"     ✅ All platforms succeeded. Deleted {img_path.name} and {txt_path.name}; "
+                  f"{path.name} kept as a record.")
+        elif pub["attempts"] >= MAX_ATTEMPTS:
+            pub["stopped"] = True
+            print(f"     🛑 Still failing on {[p for p in PLATFORMS if not pub[p]]} after {MAX_ATTEMPTS} "
+                  f"attempts. Stopped; files kept for manual review.")
+        else:
+            print(f"     ⏳ Still failing on {[p for p in PLATFORMS if not pub[p]]}; will retry next hour.")
+
+        save_entry(path, entry)
+        time.sleep(15)
+
+    if not posted_any:
+        print("\nNothing due to post this hour.")
+    return 0
 
 
 if __name__ == "__main__":
-    publish_for_today()
+    sys.exit(publish_due_posts())

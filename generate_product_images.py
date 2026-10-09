@@ -28,6 +28,8 @@ Usage
 from __future__ import annotations
 
 import argparse
+import datetime
+import json
 import logging
 import os
 import random
@@ -36,6 +38,7 @@ import getpass
 import time
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from PIL import Image
 from google.genai import Client, types
@@ -173,7 +176,7 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
         "Baby Stroller Organizer": (
             "You are an expert product photographer"
             "Collect all reference images and analyze them carefully then you shoot generate a"
-            "premium commercial placement shot of a sophisticated, durable fabric baby stroller organizer attached "
+            "premium commercial placement shot of a sophisticated, durable black fabric baby stroller organizer attached by only two straps on each side "
             "to the leather-wrapped handle of an expensive urban stroller. The organizer is packed with organized "
             "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio,"
             "bright daylight, commercial quality, sharp detail focus."
@@ -211,7 +214,7 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             "The breast pumps has a circular black screens on top displaying time with four white buttons featuring different features"
             "The demonstrator should only have 2 hands"
         ),
-        "Breathable Baby Carrier(BBC)": (
+        "Breathable Baby Carrier": (
             f"""Role & Style: You are an expert product photographer. 
             There should strictly only has one baby and a guardian in the frame.
             Generate a single, vibrant, dynamic high-end commercial lifestyle photograph. Do not generate multiple angles; it should only contain one shot.
@@ -233,7 +236,7 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             The baby should have only 2 hands.
             """
         ),
-        "Breathable Baby CarrierM(BCM)": (
+        "Breathable Baby CarrierM": (
             "You are an expert product photographer. Collect all reference images and analyze them carefully." 
             "Generate a natural-light, heartwarming commercial lifestyle photograph featuring a smiling woman or a man with a range of 25-40 ages, of random ethnicity." 
             "The image features exactly one guardian and one baby."
@@ -509,206 +512,283 @@ def process_product(
     return output_path
 
 
-def generate_descriptions(saved_paths: list[Path], client: Client):
-    log.info("=" * 60)
-    log.info("Starting automated social media description generation...")
+# --------------------------------------------------------------------------- #
+# Product links (module level so regenerate_helpers.py uses the same ones)
+# --------------------------------------------------------------------------- #
+PRODUCT_LINKS = {
+    "Automatic Nail Clipper": "https://luffcabo.com/products/electric-nail-clipper",
+    "Baby Nail File": "https://luffcabo.com/products/baby-nail-file",
+    "Baby Sculpting Device": "https://luffcabo.com/products/body-sculpting-machine",
+    "Baby Stroller Organizer": "https://luffcabo.com/products/versatile-stroller-organizer",
+    "Blue Stroller Cup Holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
+    "Breast Pumps": "https://luffcabo.com/products/electric-hands-free-breast-pump",
+    "Breathable Baby Carrier": "https://luffcabo.com/products/all-season-baby-carrier",
+    "Breathable Baby CarrierM": "https://luffcabo.com/products/luffcabo-mesh-baby-carrier",
+    "Detachable Cup Holder": "https://luffcabo.com/products/detachable-stroller-cup-holder",
+    "Gray Baby Carrier": "https://luffcabo.com/products/all-season-baby-carrier?variant=41562902167648",
+    "Gray stroller cup holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
+    "Gray Stroller Organizer": "https://luffcabo.com/products/durable-stroller-organizer",
+    "Inflatable Baby Seat": "https://luffcabo.com/products/inflatable-baby-seat",
+    "LED Beauty Mask": "https://luffcabo.com/products/led-beauty-mask",
+}
 
-    output_folder = Path("output_descriptions")
-    output_folder.mkdir(parents=True, exist_ok=True)
 
-    # NOTE: We intentionally do NOT wipe old .txt files here anymore.
-    # Image filenames always get a fresh incrementing index (next_output_index),
-    # so new captions never collide with old ones. Wiping unconditionally used
-    # to delete captions belonging to images that were still pending/retrying
-    # from a prior run in social_publisher.py, permanently orphaning them.
+def product_link_for(base_key: str) -> str:
+    return PRODUCT_LINKS.get(
+        base_key, f"https://luffcabo.com/products/{base_key.lower().replace(' ', '-')}"
+    )
 
-    PRODUCT_LINKS = {
-        "Automatic Nail Clipper": "https://luffcabo.com/products/electric-nail-clipper",
-        "Baby Nail File": "https://luffcabo.com/products/baby-nail-file",
-        "Baby Sculpting Device": "https://luffcabo.com/products/body-sculpting-machine",
-        "Baby Stroller Organizer": "https://luffcabo.com/products/versatile-stroller-organizer",
-        "Blue Stroller Cup Holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
-        "Breast Pumps": "https://luffcabo.com/products/electric-hands-free-breast-pump",
-        "Breathable Baby Carrier": "https://luffcabo.com/products/all-season-baby-carrier",
-        "Breathable Baby CarrierM": "https://luffcabo.com/products/luffcabo-mesh-baby-carrier",
-        "Detachable Cup Holder": "https://luffcabo.com/products/detachable-stroller-cup-holder",
-        "Gray Baby Carrier": "https://luffcabo.com/products/all-season-baby-carrier?variant=41562902167648",
-        "Gray stroller cup holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
-        "Gray Stroller Organizer": "https://luffcabo.com/products/durable-stroller-organizer",
-        "Inflatable Baby Seat": "https://luffcabo.com/products/inflatable-baby-seat",
-        "LED Beauty Mask": "https://luffcabo.com/products/led-beauty-mask"  
+
+# --------------------------------------------------------------------------- #
+# Weekly schedule
+# --------------------------------------------------------------------------- #
+# A batch generated on Friday night (San Diego) covers the NEXT Sunday, then
+# the Tuesday, Thursday and Saturday after it. Every post therefore gets an
+# absolute date, so a new week's batch can never be confused with last week's.
+HOME_TZ = "America/Los_Angeles"
+POST_HOUR_LOCAL = 7
+MIN_REVIEW_HOURS = 12  # warn if a slot leaves less review time than this
+
+SLOTS = {
+    "sun": {"day": "Sunday", "day_offset": 0, "options": [
+        {"country": "Saudi Arabia", "cities": ["Riyadh", "Jeddah", "Mecca", "Medina"], "language": "Arabic"},
+        {"country": "United Arab Emirates", "cities": ["Dubai", "Abu Dhabi", "Sharjah"], "language": "Arabic"},
+    ]},
+    "tue": {"day": "Tuesday", "day_offset": 2, "options": [
+        {"country": "USA", "cities": ["Los Angeles", "Seattle", "New York", "Chicago", "Miami", "San Francisco", "Austin", "Denver"], "language": "English"},
+    ]},
+    "thu": {"day": "Thursday", "day_offset": 4, "options": [
+        {"country": "France", "cities": ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Bordeaux"], "language": "French"},
+        {"country": "Germany", "cities": ["Berlin", "Munich", "Frankfurt", "Hamburg", "Cologne", "Stuttgart"], "language": "German"},
+        {"country": "Sweden", "cities": ["Stockholm", "Gothenburg", "Malmö"], "language": "Swedish"},
+        {"country": "Netherlands", "cities": ["Amsterdam", "Rotterdam", "The Hague", "Utrecht"], "language": "Dutch"},
+        {"country": "Italy", "cities": ["Rome", "Milan", "Naples", "Turin", "Florence"], "language": "Italian"},
+        {"country": "Belgium", "cities": ["Brussels", "Antwerp", "Ghent", "Liege"], "language": "French"},
+    ]},
+    "sat": {"day": "Saturday", "day_offset": 6, "options": [
+        {"country": "UK", "cities": ["London", "Manchester", "Edinburgh", "Birmingham", "Bristol"], "language": "English"},
+        {"country": "Australia", "cities": ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"], "language": "English"},
+    ]},
+}
+CASUAL_SLOT_ORDER = ["tue", "sat", "thu"]  # same mapping as before: casual #1 -> Tue, #2 -> Sat, #3 -> Thu
+ARABIC_SLOT = "sun"
+
+# Fixed timezone per city (no geocoding at publish time, so no guessing).
+CITY_TZ = {
+    "Los Angeles": "America/Los_Angeles", "San Francisco": "America/Los_Angeles", "Seattle": "America/Los_Angeles",
+    "Denver": "America/Denver", "Chicago": "America/Chicago", "Austin": "America/Chicago",
+    "New York": "America/New_York", "Miami": "America/New_York",
+    "Riyadh": "Asia/Riyadh", "Jeddah": "Asia/Riyadh", "Mecca": "Asia/Riyadh", "Medina": "Asia/Riyadh",
+    "Dubai": "Asia/Dubai", "Abu Dhabi": "Asia/Dubai", "Sharjah": "Asia/Dubai",
+    "London": "Europe/London", "Manchester": "Europe/London", "Edinburgh": "Europe/London",
+    "Birmingham": "Europe/London", "Bristol": "Europe/London",
+    "Sydney": "Australia/Sydney", "Melbourne": "Australia/Melbourne", "Brisbane": "Australia/Brisbane",
+    "Perth": "Australia/Perth", "Adelaide": "Australia/Adelaide",
+    "Paris": "Europe/Paris", "Marseille": "Europe/Paris", "Lyon": "Europe/Paris", "Toulouse": "Europe/Paris",
+    "Nice": "Europe/Paris", "Bordeaux": "Europe/Paris",
+    "Berlin": "Europe/Berlin", "Munich": "Europe/Berlin", "Frankfurt": "Europe/Berlin", "Hamburg": "Europe/Berlin",
+    "Cologne": "Europe/Berlin", "Stuttgart": "Europe/Berlin",
+    "Stockholm": "Europe/Stockholm", "Gothenburg": "Europe/Stockholm", "Malmö": "Europe/Stockholm",
+    "Amsterdam": "Europe/Amsterdam", "Rotterdam": "Europe/Amsterdam", "The Hague": "Europe/Amsterdam",
+    "Utrecht": "Europe/Amsterdam",
+    "Rome": "Europe/Rome", "Milan": "Europe/Rome", "Naples": "Europe/Rome", "Turin": "Europe/Rome",
+    "Florence": "Europe/Rome",
+    "Brussels": "Europe/Brussels", "Antwerp": "Europe/Brussels", "Ghent": "Europe/Brussels", "Liege": "Europe/Brussels",
+}
+
+SCHEDULE_DIR = Path("output_schedule")
+CAPTION_DIR = Path("output_descriptions")
+
+
+def batch_anchor_sunday(now_utc: datetime.datetime | None = None) -> datetime.date:
+    """The first Sunday strictly after today's date in San Diego."""
+    now_utc = now_utc or datetime.datetime.now(datetime.timezone.utc)
+    home_date = now_utc.astimezone(ZoneInfo(HOME_TZ)).date()
+    days_ahead = (6 - home_date.weekday()) % 7 or 7
+    return home_date + datetime.timedelta(days=days_ahead)
+
+
+def pick_target(slot_key: str) -> dict:
+    option = random.choice(SLOTS[slot_key]["options"])
+    city = random.choice(option["cities"])
+    return {
+        "day": SLOTS[slot_key]["day"],
+        "city": city,
+        "country": option["country"],
+        "language": option["language"],
+        "timezone": CITY_TZ[city],
     }
 
-    # Configuration Pools
-    post_1_pool = {"country": "USA", "cities": ["Los Angeles", "Seattle", "New York", "Chicago", "Miami", "San Francisco", "Austin", "Denver"], "language": "English", "day": "Tuesday"}
-    post_2_pool = [
-        {"country": "Saudi Arabia", "cities": ["Riyadh", "Jeddah", "Mecca", "Medina"], "language": "Arabic", "day": "Sunday"},
-        {"country": "United Arab Emirates", "cities": ["Dubai", "Abu Dhabi", "Sharjah"], "language": "Arabic", "day": "Sunday"}
-    ]
-    post_3_options = [
-        {"country": "UK", "cities": ["London", "Manchester", "Edinburgh", "Birmingham", "Bristol"], "language": "English", "day": "Saturday"},
-        {"country": "Australia", "cities": ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"], "language": "English", "day": "Saturday"}
-    ]
 
-    post_4_options = [
-        {"country": "France", "cities": ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Bordeaux"], "language": "French", "day": "Thursday"},
-        {"country": "Germany", "cities": ["Berlin", "Munich", "Frankfurt", "Hamburg", "Cologne", "Stuttgart"], "language": "German", "day": "Thursday"},
-        {"country": "Sweden", "cities": ["Stockholm", "Gothenburg", "Malmö"], "language": "Swedish", "day": "Thursday"},
-        {"country": "Netherlands", "cities": ["Amsterdam", "Rotterdam", "The Hague", "Utrecht"], "language": "Dutch", "day": "Thursday"},
-        {"country": "Italy", "cities": ["Rome", "Milan", "Naples", "Turin", "Florence"], "language": "Italian", "day": "Thursday"},
-        {"country": "Belgium", "cities": ["Brussels", "Antwerp", "Ghent", "Liege"], "language": "French", "day": "Thursday"}
-    ]
+def scheduled_local_time(anchor: datetime.date, slot_key: str, tz_name: str) -> datetime.datetime:
+    post_date = anchor + datetime.timedelta(days=SLOTS[slot_key]["day_offset"])
+    return datetime.datetime.combine(post_date, datetime.time(POST_HOUR_LOCAL), tzinfo=ZoneInfo(tz_name))
 
-    casual_count = 0
 
-    for i, img_path in enumerate(saved_paths):
-        # 1. Parse the generated file name cleanly
-        raw_name = img_path.stem  # e.g., modeled_Baby_Nail_File_ARABIC_1
+def schedule_path(batch_id: str, slot_key: str) -> Path:
+    return SCHEDULE_DIR / f"{batch_id}_{slot_key}.json"
 
-        if raw_name.startswith("modeled_"):
-            raw_name = raw_name[len("modeled_"):]
 
-        name_parts = raw_name.split('_')
+def load_schedule(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-        # Remove the numeric index at the end
-        if name_parts[-1].isdigit():
-            name_parts = name_parts[:-1]
 
-        # Detect if it's the Arabic variant and remove the tag
-        is_arabic = False
-        if len(name_parts) > 0 and name_parts[-1] == "ARABIC":
-            is_arabic = True
-            name_parts = name_parts[:-1]
+def save_schedule(entry: dict) -> Path:
+    SCHEDULE_DIR.mkdir(parents=True, exist_ok=True)
+    path = schedule_path(entry["batch_id"], entry["slot"])
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(entry, f, indent=2, ensure_ascii=False)
+    return path
 
-        base_clean_key = " ".join(name_parts)
 
-        # Link resolution
-        product_link = PRODUCT_LINKS.get(
-            base_clean_key,
-            f"https://luffcabo.com/products/{base_clean_key.lower().replace(' ', '-')}"
-        )
+def new_schedule_entry(batch_id, slot_key, product_name, arabic_variant, target, when_local) -> dict:
+    return {
+        "batch_id": batch_id,
+        "slot": slot_key,
+        "product_name": product_name,
+        "arabic_variant": arabic_variant,
+        "day": target["day"],
+        "city": target["city"],
+        "country": target["country"],
+        "language": target["language"],
+        "timezone": target["timezone"],
+        "scheduled_local": when_local.isoformat(),
+        "scheduled_utc": when_local.astimezone(datetime.timezone.utc).isoformat(),
+        "image": None,
+        "caption": None,
+        # Reviewer changes this to "approved" (or "rejected"). Nothing posts until it says "approved".
+        "review": "pending",
+        "regenerations": 0,
+        "publish": {
+            "facebook": False, "instagram_feed": False, "threads": False,
+            "attempts": 0, "done": False, "stopped": False, "missed": False, "posted_at": None,
+        },
+    }
 
-        # 2. DETERMINE AUDIENCE CONFIGURATION
-        if is_arabic:
-            # Arabic image always pulls from post_2_pool (Saudi Arabia / UAE)
-            selection = random.choice(post_2_pool)
-            country = selection["country"]
-            lang = selection["language"]
-            day = selection["day"]
-            city = random.choice(selection["cities"])
-        else:
-            # Distribute the 3 casual images across the 3 remaining pools
-            if casual_count == 0:
-                country = post_1_pool["country"]
-                lang = post_1_pool["language"]
-                day = post_1_pool["day"]
-                city = random.choice(post_1_pool["cities"])
-            elif casual_count == 1:
-                selection = random.choice(post_3_options)
-                country = selection["country"]
-                lang = selection["language"]
-                day = selection["day"]
-                city = random.choice(selection["cities"])
-            else:
-                selection = random.choice(post_4_options)
-                country = selection["country"]
-                lang = selection["language"]
-                day = selection["day"]
-                city = random.choice(selection["cities"])
 
-            casual_count += 1
+# --------------------------------------------------------------------------- #
+# Captions
+# --------------------------------------------------------------------------- #
+def generate_caption(
+    img_path: Path,
+    client: Client,
+    target: dict,
+    base_clean_key: str,
+    product_link: str,
+    output_folder: Path = CAPTION_DIR,
+    max_manual_retries: int = 3,
+) -> Path | None:
+    """Write `{img_path.stem}.txt` for one image with an explicit target. Returns the path or None."""
+    city, country, lang, day = target["city"], target["country"], target["language"], target["day"]
+    output_folder.mkdir(parents=True, exist_ok=True)
 
-        log.info(f"Generating caption for: {img_path.name}")
-        log.info(f"Targeting: {lang} | {city}, {country} | {day} 7:00 AM")
+    log.info(f"Generating caption for: {img_path.name}")
+    log.info(f"Targeting: {lang} | {city}, {country} | {day} 7:00 AM")
 
+    try:
+        img = Image.open(img_path)
+    except Exception as e:
+        log.error(f"Skipping unreadable image {img_path.name}: {e}")
+        return None
+
+    text_prompt = f"""
+    Act as a 'Social Media Post Caption' creator and SEO Specialist for LUFFCABO. Your goal is to generate an engaging, attractive, and search-optimized caption and alt text for this single image.
+
+    Analyze the attached image of the '{base_clean_key}'.
+
+    TARGET CONFIGURATION FOR THIS POST:
+    - Location: {city}, {country}
+    - Schedule: {day}, 7:00 AM Local Time
+    - Language: {lang}
+
+    === Behaviors and Rules ===
+
+    1. Caption Composition:
+       a) Write a short, engaging paragraph in a 'fun, chill, and attractive' tone that highlights the lifestyle or product appeal.
+       b) Incorporate highly Amazon & Google-search-recommended product keywords naturally within the text.
+       c) Mandatory Inclusion: You must include the exact phrase (translated organically into {lang}): 'Explore it Now: {product_link}'. The URL must remain exactly as provided.
+       d) Hashtags: Conclude with exactly 5 hashtags in this exact format:
+          - #LUFFCABO
+          - # [1 English core keyword for {base_clean_key}]
+          - # [1 Core keyword in {lang}]
+          - # [1 Broader lifestyle/product keyword in {lang}]
+          - # [1 Broader lifestyle/product keyword in {lang}]
+       e) Length: The ENTIRE caption must be strictly under 500 characters.
+
+    2. Alt Text Creation:
+       a) Write a concise, descriptive sentence for the alt text field in {lang}.
+       b) Seamlessly embed high-ranking Amazon & Google search product keywords.
+       c) Focus on clarity for visually impaired users while maintaining SEO benefits.
+       d) CRITICAL: NEVER use a period at the end of the alt text.
+
+    3. Language and Style:
+       a) Write the entire post (except the English hashtag and URL) strictly in {lang}.
+       b) Maintain a consistent brand voice: approachable, trendy, inviting, enthusiastic but relaxed ('chill').
+       c) Use emojis where appropriate to enhance the 'fun' vibe.
+       d) Keep the content concise and optimized for quick scrolling on social feeds.
+
+    Format your output EXACTLY like this:
+
+    Location Tag: {city}, {country}
+    Schedule: {day} 7:00 AM Local Time
+    Language: {lang}
+
+    Caption:
+    [Your caption here]
+    [The 5 Hashtags based on the rule]
+
+    Alt Text:
+    [Your alt text here]
+    """
+
+    for attempt in range(1, max_manual_retries + 1):
         try:
-            img = Image.open(img_path)
+            log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
+            response = client.models.generate_content(
+                model="gemini-3.5-flash",
+                contents=[text_prompt, img],
+            )
+            txt_output_path = output_folder / f"{img_path.stem}.txt"
+            with open(txt_output_path, "w", encoding="utf-8") as f:
+                f.write(response.text)
+            log.info(f"  - Saved caption to: {txt_output_path}")
+            return txt_output_path
         except Exception as e:
-            log.error(f"Skipping unreadable image {img_path.name}: {e}")
-            continue
+            log.warning(f"  ⚠️ Attempt {attempt} failed: {e}")
+            if attempt < max_manual_retries:
+                time.sleep(attempt * 5)
+            else:
+                log.error(f"  ❌ All manual retry attempts exhausted for {img_path.name}.")
+    return None
 
-        text_prompt = f"""
-        Act as a 'Social Media Post Caption' creator and SEO Specialist for LUFFCABO. Your goal is to generate an engaging, attractive, and search-optimized caption and alt text for this single image.
 
-        Analyze the attached image of the '{base_clean_key}'.
-
-        TARGET CONFIGURATION FOR THIS POST:
-        - Location: {city}, {country}
-        - Schedule: {day}, 7:00 AM Local Time
-        - Language: {lang}
-
-        === Behaviors and Rules ===
-
-        1. Caption Composition:
-           a) Write a short, engaging paragraph in a 'fun, chill, and attractive' tone that highlights the lifestyle or product appeal.
-           b) Incorporate highly Amazon & Google-search-recommended product keywords naturally within the text.
-           c) Mandatory Inclusion: You must include the exact phrase (translated organically into {lang}): 'Explore it Now: {product_link}'. The URL must remain exactly as provided.
-           d) Hashtags: Conclude with exactly 5 hashtags in this exact format:
-              - #LUFFCABO
-              - # [1 English core keyword for {base_clean_key}]
-              - # [1 Core keyword in {lang}]
-              - # [1 Broader lifestyle/product keyword in {lang}]
-              - # [1 Broader lifestyle/product keyword in {lang}]
-           e) Length: The ENTIRE caption must be strictly under 500 characters.
-
-        2. Alt Text Creation:
-           a) Write a concise, descriptive sentence for the alt text field in {lang}.
-           b) Seamlessly embed high-ranking Amazon & Google search product keywords.
-           c) Focus on clarity for visually impaired users while maintaining SEO benefits.
-           d) CRITICAL: NEVER use a period at the end of the alt text.
-
-        3. Language and Style:
-           a) Write the entire post (except the English hashtag and URL) strictly in {lang}.
-           b) Maintain a consistent brand voice: approachable, trendy, inviting, enthusiastic but relaxed ('chill').
-           c) Use emojis where appropriate to enhance the 'fun' vibe.
-           d) Keep the content concise and optimized for quick scrolling on social feeds.
-
-        Format your output EXACTLY like this:
-
-        Location Tag: {city}, {country}
-        Schedule: {day} 7:00 AM Local Time
-        Language: {lang}
-
-        Caption:
-        [Your caption here]
-        [The 5 Hashtags based on the rule]
-
-        Alt Text:
-        [Your alt text here]
-        """
-
-        max_manual_retries = 3
-        for attempt in range(1, max_manual_retries + 1):
-            try:
-                log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
-                response = client.models.generate_content(
-                    model='gemini-3.5-flash',  # Or replace with your specific string if needed
-                    contents=[text_prompt, img]
-                )
-
-                description = response.text
-
-                # IMPORTANT: filename must exactly match the image's stem
-                # (e.g. "modeled_Baby_Nail_File_1.txt") so social_publisher.py's
-                # exact-match lookup (text_folder / f"{base_name}.txt") can find it.
-                # The old "desc_..._{lang}_{country}.txt" naming never matched,
-                # which meant the publisher skipped every single generated post.
-                txt_filename = f"{img_path.stem}.txt"
-                txt_output_path = output_folder / txt_filename
-
-                with open(txt_output_path, "w", encoding="utf-8") as text_file:
-                    text_file.write(description)
-
-                log.info(f"  - Saved caption to: {txt_output_path}")
-                break  # Break out of retry loop on success
-
-            except Exception as e:
-                log.warning(f"  ⚠️ Attempt {attempt} failed: {e}")
-                if attempt < max_manual_retries:
-                    sleep_time = attempt * 5
-                    time.sleep(sleep_time)
-                else:
-                    log.error(f"  ❌ All manual retry attempts exhausted for {img_path.name}.")
+def write_step_summary(batch_id: str, entries: list[dict]) -> None:
+    """Review checklist in the GitHub Actions run page (no-op when run locally)."""
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_file:
+        return
+    lines = [
+        f"## Batch {batch_id}: review needed",
+        "",
+        "| Slot | Product | Where | Posts at (local) | Image | Status |",
+        "|---|---|---|---|---|---|",
+    ]
+    for e in entries:
+        ok = e["image"] and e["caption"]
+        status = "awaiting review" if ok else ("caption failed" if e["image"] else "image failed")
+        lines.append(
+            f"| `{e['slot']}` | {e['product_name']}{' (Arabic)' if e['arabic_variant'] else ''} | "
+            f"{e['city']}, {e['country']} | {e['scheduled_local'][:16].replace('T', ' ')} | "
+            f"`{e['image'] or '—'}` | {status} |"
+        )
+    lines += [
+        "",
+        f'To approve: edit `output_schedule/{batch_id}_<slot>.json` and set `"review": "approved"`.',
+        "To redo one: run the **Regenerate Slot** workflow with this batch id and slot.",
+    ]
+    with open(summary_file, "a", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 # --------------------------------------------------------------------------- #
@@ -718,11 +798,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base-folder", default="Product images", help="Folder containing per-product reference image subfolders.")
     parser.add_argument("--output-folder", default="output_models", help="Folder to save generated images into.")
-    parser.add_argument("--num-casual", type=int, default=3, help="How many casual-setting products/images to generate.")
+    parser.add_argument("--num-casual", type=int, default=3, help="How many casual-setting products/images to generate (max 3).")
     parser.add_argument("--no-arabic", action="store_true", help="Skip the 4th, Arabic/modest-dress image.")
     parser.add_argument("--max-retries", type=int, default=10, help="Max retries per image generation call.")
     parser.add_argument("--cooldown", type=float, default=8.0, help="Seconds to sleep between products.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed, for reproducible product selection.")
+    parser.add_argument("--force", action="store_true", help="Overwrite an existing batch for the same week.")
     return parser.parse_args()
 
 
@@ -732,72 +813,91 @@ def main() -> int:
     if args.seed is not None:
         random.seed(args.seed)
 
-    api_key = os.environ.get("GOOGLE_API_KEY")
-
-    if not api_key:
-        log.error("No API key provided. Set GOOGLE_API_KEY or enter it when prompted.")
+    if args.num_casual > len(CASUAL_SLOT_ORDER):
+        log.error("Only %d casual slots exist (%s).", len(CASUAL_SLOT_ORDER), CASUAL_SLOT_ORDER)
         return 1
 
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        log.error("No API key provided. Set GOOGLE_API_KEY.")
+        return 1
     client = Client(api_key=api_key)
 
     base_folder = Path(args.base_folder)
     output_folder = Path(args.output_folder)
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Calculate total distinct products needed (3 casual + 1 Arabic = 4)
-    total_needed = args.num_casual + (0 if args.no_arabic else 1)
-    if total_needed > len(PRODUCT_LIST):
-        log.error("Requested %d distinct products but only %d are defined.", total_needed, len(PRODUCT_LIST))
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    anchor = batch_anchor_sunday(now_utc)
+    batch_id = anchor.isoformat()
+
+    existing = sorted(SCHEDULE_DIR.glob(f"{batch_id}_*.json"))
+    if existing and not args.force:
+        log.error(
+            "Batch %s already exists (%s). Refusing to create a second set of posts for the same week. "
+            "Use regenerate_helpers.py to redo one slot, or --force to overwrite.",
+            batch_id, ", ".join(p.name for p in existing),
+        )
         return 1
 
-    # Grab 4 UNIQUE products from the list
+    total_needed = args.num_casual + (0 if args.no_arabic else 1)
     selected_products = random.sample(PRODUCT_LIST, total_needed)
-
-    # Assign the first 3 to casual, and the 4th to Arabic
     casual_products = selected_products[: args.num_casual]
     arabic_product = None if args.no_arabic else selected_products[args.num_casual]
+
+    # Each product gets its slot (day + region) BEFORE generation, so a failed
+    # image still has a known slot that can be regenerated with the same target.
+    assignments = [(p, False, CASUAL_SLOT_ORDER[i]) for i, p in enumerate(casual_products)]
+    if arabic_product:
+        assignments.append((arabic_product, True, ARABIC_SLOT))
 
     color_age = random.choice(COLOR_AGE_PAIRS)
     custom_prompts = build_custom_prompts(color_age["color"], color_age["age"])
 
-    log.info("Selected 3 distinct casual products: %s", casual_products)
-    if arabic_product:
-        log.info("Selected 1 distinct Arabic/modest-dress product: %s", arabic_product)
+    log.info("Batch %s (week starting Sunday %s)", batch_id, batch_id)
+    entries: list[dict] = []
 
-    saved_paths: list[Path] = []
+    for i, (product_name, arabic, slot_key) in enumerate(assignments, start=1):
+        target = pick_target(slot_key)
+        when_local = scheduled_local_time(anchor, slot_key, target["timezone"])
+        entry = new_schedule_entry(batch_id, slot_key, product_name, arabic, target, when_local)
 
-    # 1. Process the 3 unique products for casual images (1 image each)
-    for i, product_name in enumerate(casual_products, start=1):
-        path = process_product(
+        hours_left = (when_local - now_utc).total_seconds() / 3600
+        log.info("Slot %s -> %s | %s, %s | posts %s (%.0fh from now)",
+                 slot_key, product_name, target["city"], target["country"], when_local.isoformat(), hours_left)
+        if hours_left < MIN_REVIEW_HOURS:
+            log.warning("⚠️ Only %.1fh of review time before slot %s posts.", hours_left, slot_key)
+
+        img_path = process_product(
             client, base_folder, output_folder, product_name, custom_prompts,
-            arabic_variant=False, max_retries=args.max_retries,
+            arabic_variant=arabic, max_retries=args.max_retries,
         )
-        if path:
-            saved_paths.append(path)
+        if img_path:
+            entry["image"] = img_path.name
+            base_key = clean_key(product_name)
+            txt_path = generate_caption(img_path, client, target, base_key, product_link_for(base_key))
+            if txt_path:
+                entry["caption"] = txt_path.name
 
-        # Cooldown between different products
-        if i < len(casual_products) or arabic_product:
+        save_schedule(entry)
+        entries.append(entry)
+
+        if i < len(assignments):
             log.info("Cooling down %.0fs before the next product...\n", args.cooldown)
             time.sleep(args.cooldown)
 
-    # 2. Process the 4th unique product for the Arabic image (1 image)
-    if arabic_product:
-        path = process_product(
-            client, base_folder, output_folder, arabic_product, custom_prompts,
-            arabic_variant=True, max_retries=args.max_retries,
-        )
-        if path:
-            saved_paths.append(path)
+    write_step_summary(batch_id, entries)
 
+    complete = [e for e in entries if e["image"] and e["caption"]]
     log.info("=" * 60)
-    log.info("Done. %d/%d image(s) generated successfully.", len(saved_paths), total_needed)
-    for p in saved_paths:
-        log.info("  - %s", p)
+    log.info("Done. %d/%d slot(s) ready for review.", len(complete), len(entries))
+    for e in entries:
+        if not (e["image"] and e["caption"]):
+            log.warning("Slot %s needs regeneration: python regenerate_helpers.py --batch %s --slot %s",
+                        e["slot"], batch_id, e["slot"])
 
-    if saved_paths:
-        generate_descriptions(saved_paths, client)
+    return 0 if len(complete) == len(entries) else 2
 
-    return 0 if len(saved_paths) == total_needed else 2
 
 if __name__ == "__main__":
     sys.exit(main())
