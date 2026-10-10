@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-11",
+  "slot": "thu",
+  "product_name": "Blue Stroller Cup Holder(Btray)",
+  "arabic_variant": false,
+  "day": "Thursday",
+  "city": "The Hague",
+  "country": "Netherlands",
+  "language": "Dutch",
+  "timezone": "Europe/Amsterdam",
+  "scheduled_local": "2026-10-15T07:00:00+02:00",
+  "scheduled_utc": "2026-10-15T05:00:00+00:00",
+  "image": null,
+  "caption": null,
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

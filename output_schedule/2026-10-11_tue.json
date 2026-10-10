@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-11",
+  "slot": "tue",
+  "product_name": "Inflatable Baby Seat(IBS)",
+  "arabic_variant": false,
+  "day": "Tuesday",
+  "city": "Miami",
+  "country": "USA",
+  "language": "English",
+  "timezone": "America/New_York",
+  "scheduled_local": "2026-10-13T07:00:00-04:00",
+  "scheduled_utc": "2026-10-13T11:00:00+00:00",
+  "image": "modeled_Inflatable_Baby_Seat_1.jpg",
+  "caption": "modeled_Inflatable_Baby_Seat_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}
