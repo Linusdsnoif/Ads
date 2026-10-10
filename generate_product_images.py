@@ -157,20 +157,26 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
         ),
         "Baby Sculpting Device": (
             f"""
-            A professional commercial product photograph in a luxury setting, rendered in ultra-realistic 8k resolution with shallow depth of field and soft ambient indoor lighting in gentle pastel tones. 
-            The scene is a clean changing station countertop with varying marble patterns, and features a smiling woman, of random ethnicities and ages from young adult to mid-30s, well-seated. 
-            She is holding the single, only baby facial sculpting device in the entire scene against her cheek, jawline, or under her eye to demonstrate its use.
-            The device is straight vertical and not bendable at all. It should remain a straight vertical device in the frame.
-            Ensure the product matches the form from the reference image.
-            It has a single, dark, circular display face on top. 
-            Crucially, embedded within this dark display screen, there is a distinct curved array of exactly 5 white, arc-shaped control buttons. 
-            The device is held with the top display vertical to the bottom.
-            On the countertop in the foreground, among the crystal-clear reflections, a curated collection of high-end baby accessories (such as a wooden brush, organic muslin cloths, a single boutique lotion bottle, and a different colored storage pouch) is arranged, without any additional freestanding devices. 
-            There are absolutely no brand logos or text on the device, the woman, or any accessories. 
-            There is no baby face image on the device. 
-            There is only one single device in the whole frame, and it is in the woman's hand.
-            **Carefully reference the images, and ensure there are absolutely only FIVE buttons on top of the circular display screen**
-            The demonstrator should have only 2 hands.
+            A professional commercial product photograph in a luxury setting, rendered in ultra-realistic 8k resolution with shallow depth of field and soft ambient indoor lighting in gentle pastel tones.
+            The scene is a clean changing station countertop with varying marble patterns, and features a smiling woman, of random ethnicities and ages from young adult to mid-30s, seated at the counter.
+
+            THE PRODUCT (copy its shape exactly from the reference images):
+            A compact, palm-sized facial sculpting device shaped like a mushroom or a doorknob lying on its side. It has NO handle, NO stick, NO long grip and is NOT a wand or paddle.
+            It has three parts, in a straight line:
+            1. FRONT: a large, smooth, glossy white convex dome. This dome is the part that touches the skin.
+            2. MIDDLE: a short, narrow white neck connecting the dome to the back. This neck is the only place she holds it.
+            3. BACK: a smaller flat circular face made of glossy black, with exactly FIVE white arc-shaped segment buttons arranged in a curved row around its edge.
+            The dome is noticeably wider than the black back face. The whole device is no longer than her hand.
+
+            HOW IT IS HELD:
+            She holds it between her thumb and fingers by the narrow neck, with the white dome pressed against her cheek or jawline.
+            The device points sideways, away from her face, so the camera sees it from the side: the white dome against her skin and the black face with the five white buttons at the outer end.
+
+            On the countertop in the foreground, among the crystal-clear reflections, a curated collection of high-end baby accessories (such as a wooden brush, organic muslin cloths, a single boutique lotion bottle, and a different colored storage pouch) is arranged, without any additional devices.
+            There are absolutely no brand logos or text on the device, the woman, or any accessories.
+            There is no face or picture printed on the device.
+            There is only one device in the whole frame, and it is in the woman's hand.
+            The woman has exactly two hands and five fingers on each hand.
             """
         ),
         "Baby Stroller Organizer": (
@@ -542,15 +548,17 @@ def product_link_for(base_key: str) -> str:
 # --------------------------------------------------------------------------- #
 # Weekly schedule
 # --------------------------------------------------------------------------- #
-# A batch generated on Friday night (San Diego) covers the NEXT Sunday, then
-# the Tuesday, Thursday and Saturday after it. Every post therefore gets an
-# absolute date, so a new week's batch can never be confused with last week's.
+# A batch generated on Friday night (San Diego) covers the following
+# Tuesday, Thursday, Saturday and Sunday (e.g. generated Fri Oct 9 -> posts
+# Tue 13, Thu 15, Sat 17, Sun 18). The batch id is the Sunday right after the
+# Friday (2026-10-11 in that example); day_offset counts from that Sunday.
+# Every post gets an absolute date, so weeks can never be confused.
 HOME_TZ = "America/Los_Angeles"
 POST_HOUR_LOCAL = 7
 MIN_REVIEW_HOURS = 12  # warn if a slot leaves less review time than this
 
 SLOTS = {
-    "sun": {"day": "Sunday", "day_offset": 0, "options": [
+    "sun": {"day": "Sunday", "day_offset": 7, "options": [
         {"country": "Saudi Arabia", "cities": ["Riyadh", "Jeddah", "Mecca", "Medina"], "language": "Arabic"},
         {"country": "United Arab Emirates", "cities": ["Dubai", "Abu Dhabi", "Sharjah"], "language": "Arabic"},
     ]},
