@@ -10,10 +10,10 @@
   "timezone": "Europe/Amsterdam",
   "scheduled_local": "2026-10-15T07:00:00+02:00",
   "scheduled_utc": "2026-10-15T05:00:00+00:00",
-  "image": null,
-  "caption": null,
+  "image": "modeled_Blue_Stroller_Cup_Holder_1.jpg",
+  "caption": "modeled_Blue_Stroller_Cup_Holder_1.txt",
   "review": "pending",
-  "regenerations": 0,
+  "regenerations": 1,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
