@@ -10,10 +10,10 @@
   "timezone": "Asia/Dubai",
   "scheduled_local": "2026-10-11T07:00:00+04:00",
   "scheduled_utc": "2026-10-11T03:00:00+00:00",
-  "image": "modeled_Baby_Sculpting_Device_ARABIC_1.jpg",
-  "caption": "modeled_Baby_Sculpting_Device_ARABIC_1.txt",
+  "image": "modeled_Baby_Sculpting_Device_ARABIC_2.jpg",
+  "caption": "modeled_Baby_Sculpting_Device_ARABIC_2.txt",
   "review": "pending",
-  "regenerations": 0,
+  "regenerations": 1,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
