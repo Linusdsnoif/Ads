@@ -194,15 +194,32 @@ def poll_container_status(container_id: str, platform: str, token: str, max_retr
 # so the caller can decide whether it's safe to delete the source files.
 
 def post_to_facebook(image_url: str, caption: str) -> bool:
+    """Upload the photo unpublished, then create a normal feed post with it attached,
+    so it shows up in the Page's posts (not only in the Photos section)."""
     print("  -> Posting to Facebook Page...")
-    url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
-    payload = {"url": image_url, "message": caption, "access_token": META_ACCESS_TOKEN}
     try:
-        response = requests.post(url, data=payload, timeout=30)
-        if response.status_code == 200:
-            print("     ✅ Facebook Post Successful!")
+        upload = requests.post(
+            f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos",
+            data={"url": image_url, "published": "false", "access_token": META_ACCESS_TOKEN},
+            timeout=60,
+        ).json()
+        if "id" not in upload:
+            print(f"     ❌ Facebook photo upload error: {upload}")
+            return False
+
+        post = requests.post(
+            f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed",
+            data={
+                "message": caption,
+                "attached_media": json.dumps([{"media_fbid": upload["id"]}]),
+                "access_token": META_ACCESS_TOKEN,
+            },
+            timeout=30,
+        ).json()
+        if "id" in post:
+            print(f"     ✅ Facebook Post Successful! (post id {post['id']})")
             return True
-        print(f"     ❌ Facebook Error: {response.json()}")
+        print(f"     ❌ Facebook feed post error: {post}")
         return False
     except Exception as e:
         print(f"     ❌ Facebook request failed: {e}")
@@ -224,6 +241,16 @@ def post_to_instagram_feed(image_url: str, caption: str, alt_text: str, location
     except Exception as e:
         print(f"     ❌ IG Container request failed: {e}")
         return False
+
+    if "id" not in container_res and location_id:
+        print(f"     ⚠️ IG Container Error with location tag: {container_res}")
+        print("     ↻ Retrying without the location tag...")
+        container_payload.pop("location_id", None)
+        try:
+            container_res = requests.post(container_url, data=container_payload, timeout=30).json()
+        except Exception as e:
+            print(f"     ❌ IG Container request failed: {e}")
+            return False
 
     if "id" not in container_res:
         print(f"     ❌ IG Container Error: {container_res}")
