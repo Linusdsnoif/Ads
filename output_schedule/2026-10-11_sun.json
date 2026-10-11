@@ -15,10 +15,10 @@
   "review": "approved",
   "regenerations": 1,
   "publish": {
-    "facebook": false,
+    "facebook": true,
     "instagram_feed": false,
-    "threads": false,
-    "attempts": 0,
+    "threads": true,
+    "attempts": 1,
     "done": false,
     "stopped": false,
     "missed": false,
