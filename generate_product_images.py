@@ -6,9 +6,12 @@ the Gemini image model, given local reference product photos.
 
 Produces 4 images per run:
   - 3 images in a generic, casual setting (using each product's tailored prompt)
-  - 1 image of a 4th, distinct product styled for an Arabic-region audience,
-    with demonstrators in modest/strict traditional dress (abaya + headscarf
-    for women, thawb for men) and a Middle-Eastern-appropriate setting.
+  - 1 image of a baby carrier (one of the carrier products, distinct from the
+    casual picks) styled for an Arabic-region audience. The demonstrator is a
+    Middle Eastern man or woman dressed per Gulf custom for a randomly chosen
+    indoor (private home) or outdoor (public) setting:
+      outdoor: woman in abaya + hijab + niqab (face covered), man in thawb + ghutra/shemagh
+      indoor:  woman in modest dress/abaya + hijab (face visible), man in thawb
 
 Setup
 -----
@@ -77,6 +80,13 @@ PRODUCT_LIST = [
     "LED Beauty Mask(LBM)",
 ]
 
+# The Arabic-region post only ever uses one of these baby carriers.
+ARABIC_PRODUCT_LIST = [
+    "Breathable Baby Carrier(BBC)",
+    "Breathable Baby CarrierM(BCM)",
+    "Gray Baby Carrier(GBC)",
+]
+
 COLOR_AGE_PAIRS = [
     {"color": "purple", "age": "an infant between 0 and 12 months old"},
     {"color": "yellow", "age": "a toddler between 1 and 3 years old"},
@@ -101,23 +111,45 @@ GLOBAL_GUIDANCE = (
     "Ensure there is only one guardian in the image at a time, and all body features should stay normal and fit human anatomy. Guardians should only have 2 hands in the frame."
 )
 
-# Instructions layered on top of a product's normal prompt to produce the
-# Arabic-region / strict-dress-code variant.
+# Instructions layered on top of a baby carrier's normal prompt to produce the
+# Arabic-region / strict-dress-code variant. One entry from ARABIC_SETTING_RULES
+# (indoor or outdoor) is appended after this to set the scene and dress code.
 ARABIC_DRESS_CODE_OVERRIDE = (
     "\n\nREGIONAL STYLING OVERRIDE (Arabian Gulf market, strict modest dress code):\n"
-    "Change ONLY the demonstrator's clothing, ethnicity/styling, and the background setting to fit a conservative "
-    "Gulf Arab household — do NOT change the product's design, color, shape, logo, or placement described above.\n"
-    "- If the demonstrator is a woman: she wears a traditional Saudi-style abaya — a long, loose, full-length black "
-    "outer cloak worn over her regular clothes — paired with a matching headscarf (hijab) that covers her hair. "
-    "Only her face and hands are visible. No form-fitting or short clothing.\n"
-    "- If the demonstrator is a man: he wears a thawb — a long-sleeved, ankle-length white or softly colored robe "
-    "(traditional Gulf Arab dress) — and may wear a simple white or checkered head covering.\n"
-    "- The demonstrator should be of Middle Eastern / Arab appearance.\n"
-    "- The setting should read as an upscale Gulf Arab home or family space: warm neutral or gold-toned decor, "
-    "majlis-style low seating, arabesque or geometric patterned textiles or wall art, soft warm lighting.\n"
+    "Change ONLY the guardian's clothing, ethnicity/styling, and the setting to fit a conservative Gulf Arab "
+    "family — do NOT change the baby carrier's design, color, shape, logo, buckles, or how it is worn as described "
+    "above. This replaces any earlier instruction about the guardian's ethnicity, hairstyle, clothing, or setting.\n"
+    "- The guardian is a single Middle Eastern / Arab woman or man of Arab appearance.\n"
+    "- The baby carrier is worn OVER the guardian's traditional clothing. The carrier, its straps, its buckles, and "
+    "both LUFFCABO logos must stay fully visible and must not be hidden or covered by the abaya, headscarf, face "
+    "veil, or head covering.\n"
+    "- Use lighting and framing so the carrier's edges, straps, and logo stand out clearly against dark clothing.\n"
     "- Keep the same product interaction, framing, and photorealistic commercial quality described above; this is "
-    "purely a wardrobe- and setting-region change, not a different scene concept."
+    "purely a wardrobe- and setting-region change, not a different scene concept.\n"
 )
+
+ARABIC_SETTING_RULES = {
+    "indoor": (
+        "- SETTING: INDOOR, inside a private upscale Gulf Arab family home, such as a majlis with low floor seating, "
+        "a bright family living room, or a home entrance hall. Warm neutral or gold-toned decor, arabesque or "
+        "geometric patterned textiles or wall art, soft warm lighting.\n"
+        "- INDOOR DRESS CODE, if the guardian is a woman: a loose, full-length, long-sleeved modest dress or abaya, "
+        "with a hijab that fully covers her hair and neck. Her face is uncovered and smiling; only her face and "
+        "hands are visible. No form-fitting, short, or sleeveless clothing.\n"
+        "- INDOOR DRESS CODE, if the guardian is a man: a long-sleeved, ankle-length white or softly colored thawb; "
+        "head uncovered or wearing a simple white taqiyah cap.\n"
+    ),
+    "outdoor": (
+        "- SETTING: OUTDOOR, in a public place in the Gulf, such as a waterfront corniche promenade, a landscaped "
+        "city park with palm trees, a traditional open-air souq, or a modern outdoor shopping boulevard. Bright warm "
+        "daylight, sandstone or modern Gulf architecture in the background.\n"
+        "- OUTDOOR DRESS CODE, if the guardian is a woman: a long, loose, full-length black abaya worn over her "
+        "clothes, a black hijab fully covering her hair and neck, and a black niqab covering her face so that only "
+        "her eyes are visible. Her warm, happy expression shows through her eyes. Nothing form-fitting.\n"
+        "- OUTDOOR DRESS CODE, if the guardian is a man: a long-sleeved, ankle-length white thawb with a white ghutra "
+        "or red-and-white checkered shemagh head covering held in place by a black agal cord.\n"
+    ),
+}
 
 # --------------------------------------------------------------------------- #
 # Per-product prompts (unchanged from the notebook, aside from the
@@ -498,7 +530,9 @@ def process_product(
 
     prompt_text = resolve_prompt(product_name, custom_prompts)
     if arabic_variant:
-        prompt_text += ARABIC_DRESS_CODE_OVERRIDE
+        arabic_setting = random.choice(list(ARABIC_SETTING_RULES))
+        log.info("Arabic setting: %s (dress code follows the setting)", arabic_setting)
+        prompt_text += ARABIC_DRESS_CODE_OVERRIDE + ARABIC_SETTING_RULES[arabic_setting]
 
     generated_image = generate_image(client, ref_images, prompt_text, max_retries=max_retries)
     if generated_image is None:
@@ -848,10 +882,11 @@ def main() -> int:
         )
         return 1
 
-    total_needed = args.num_casual + (0 if args.no_arabic else 1)
-    selected_products = random.sample(PRODUCT_LIST, total_needed)
-    casual_products = selected_products[: args.num_casual]
-    arabic_product = None if args.no_arabic else selected_products[args.num_casual]
+    # The Arabic post is always one of the baby carriers; the casual picks come
+    # from the rest of the list so the 4th product stays distinct.
+    arabic_product = None if args.no_arabic else random.choice(ARABIC_PRODUCT_LIST)
+    casual_pool = [p for p in PRODUCT_LIST if p != arabic_product]
+    casual_products = random.sample(casual_pool, args.num_casual)
 
     # Each product gets its slot (day + region) BEFORE generation, so a failed
     # image still has a known slot that can be regenerated with the same target.
