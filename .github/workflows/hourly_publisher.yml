@@ -1,8 +1,8 @@
 name: Hourly Social Publisher
 
 on:
-  schedule:
-    - cron: '0 * * * *'   # every hour, on the hour (UTC)
+     schedule:
+       - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -41,6 +41,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          PUBLISH_GRACE_HOURS: '4' 
         run: python publish_social.py
 
       - name: Commit and push publish state
