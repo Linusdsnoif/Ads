@@ -253,25 +253,22 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             "The demonstrator should only have 2 hands"
         ),
         "Breathable Baby Carrier": (
-            f"""Role & Style: You are an expert product photographer. 
-            There should strictly only has one baby and a guardian in the frame.
-            Generate a single, vibrant, dynamic high-end commercial lifestyle photograph. Do not generate multiple angles; it should only contain one shot.
-            Subject & Scene: The image features exactly one guardian and one baby. The guardian should either be a smiling woman or a man, aged 25-40, of random ethnicity, comfortably wearing an ergonomic baby carrier. 
-            The setting should be a random lifestyle scenario where the carrier is naturally needed, such as a sunny outdoor farmers market, a supermarket, at home, or a park. 
-            The guardian should have a casual hairstyle and clothing style suitable for the chosen setting. 
-            The guardian should do a natural, casual posture that fits the scenario to show the convenience of the product.
-            **The Baby must face outward and look at directly at the camera and looks just fine, and make sure the baby is sitting in the baby carrier**
-            Product Design (Strictly follow this): The baby carrier's main body is made of a smooth, solid black nylon/canvas material—do not make the entire carrier mesh, and a storiage zipper bag on the right side of the waist belt.
-            The top head-support panel is folded down, showing a smooth light gray exterior, and revealing a small rounded breathable light gray mesh below the fold panel.
-            The shoulder straps and thick waist belt are black. 
-            **The fastening loop connecting the main panel to the shoulder straps must be white connecting black buckles.**
-            Branding: The brand logo must be perfectly legible and clearly seen in white color and not in white square frames. It should just naturally paste on the product. 
-            The logo consists of a anchor symbol positioned directly above the text "LUFFCABO".
-            This logo must be accurately placed in two specific locations: small brand logo centered on the smooth white beneath the round breathable mesh panel size at (1.5cm x 1.5cm), and very tiny logo at the corner of the side storage zipper bag on the waist belt (0.5cm x 0.5cm) without in any frame, naturally paste on the product. 
-            Carefully reference the reference images to make sure the product design is identical.
-            Make sure the text LUFFCABO is spelled correctly. Ensure the scene is random and fitted for the product use
-            The guardian should have only 2 hands.
-            The baby should have only 2 hands.
+            f"""Product Design (strictly follow this; match the reference images exactly):
+            The entire carrier is solid black. The main body panel, the folded-down head-support
+            panel, the mesh window, the leg openings, the shoulder straps, and the thick waist belt
+            are all black fabric. The only non-black details are the white logos and two small
+            light-gray tabs on the shoulder straps.
+            - Head-support panel: folded down over the top of the front panel, smooth black fabric.
+            - Breathable mesh: one small, horizontal, rounded-rectangle window of BLACK mesh just
+            below the folded head panel. Everything else is smooth black nylon/canvas.
+            - Shoulder straps: padded black straps. Near the top of the front panel, each strap has
+            two round dark snap buttons with silver rims, joined by a short, narrow light-gray tab.
+            - Waist belt: thick black belt with a black zippered storage pouch on the wearer's right hip.
+            Branding: white logo screen-printed directly onto the black fabric, with black fabric
+            visible all around the letters: a small anchor symbol above the word "LUFFCABO".
+            - Logo 1: centered on the front panel just below the mesh window, about the width of the baby's palm.
+            - Logo 2: very small, in the lower corner of the waist-belt pouch.
+            
             """
         ),
         "Breathable Baby CarrierM": (
