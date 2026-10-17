@@ -10,10 +10,10 @@
   "timezone": "America/Los_Angeles",
   "scheduled_local": "2026-10-20T07:00:00-07:00",
   "scheduled_utc": "2026-10-20T14:00:00+00:00",
-  "image": "modeled_Gray_Baby_Carrier_2.jpg",
-  "caption": "modeled_Gray_Baby_Carrier_2.txt",
+  "image": "modeled_Gray_Baby_Carrier_3.jpg",
+  "caption": "modeled_Gray_Baby_Carrier_3.txt",
   "review": "pending",
-  "regenerations": 1,
+  "regenerations": 2,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
