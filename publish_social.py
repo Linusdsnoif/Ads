@@ -42,6 +42,11 @@ R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
 R2_PUBLIC_URL = (os.environ.get("R2_PUBLIC_URL") or "").rstrip("/")
 
+# One place to set the Facebook/Instagram Graph API version. Instagram's alt_text field
+# for image posts was added in 2025, after v19.0. Override with META_GRAPH_VERSION if needed.
+META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v23.0")
+GRAPH_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
+
 GRACE_HOURS = float(os.environ.get("PUBLISH_GRACE_HOURS", "6"))
 PLATFORMS = ["facebook", "instagram_feed", "threads"]
 MAX_ATTEMPTS = 3
@@ -75,7 +80,8 @@ def r2():
 # 2. HELPER FUNCTIONS
 # ==========================================
 def extract_caption(raw_text: str) -> tuple[str, str]:
-    """Pull the caption and alt text out of the Gemini output. Tolerates **bold** labels."""
+    """Pull the caption and alt text out of the Gemini output.
+    Tolerates **bold** labels and 'Alt Text:' / 'Alt-text:' / 'AltText:' spellings."""
     text = raw_text.replace("**", "")
     parts = re.split(r"^\s*Caption\s*:\s*", text, maxsplit=1, flags=re.M | re.I)
     if len(parts) < 2:
@@ -83,7 +89,7 @@ def extract_caption(raw_text: str) -> tuple[str, str]:
         body = text
     else:
         body = parts[1]
-    alt_parts = re.split(r"^\s*Alt Text\s*:\s*", body, maxsplit=1, flags=re.M | re.I)
+    alt_parts = re.split(r"^\s*Alt[\s\-]*Text\s*:\s*", body, maxsplit=1, flags=re.M | re.I)
     caption = alt_parts[0].strip()
     alt_text = alt_parts[1].strip() if len(alt_parts) == 2 else ""
     return caption, alt_text
@@ -112,8 +118,8 @@ def get_meta_location_id(location_name: str):
     # Strip out the country name to help Meta's search engine
     search_query = location_name.split(",")[0].strip()
     print(f"  -> Searching Meta for location ID using query: '{search_query}'")
-    
-    url = "https://graph.facebook.com/v19.0/pages/search"
+
+    url = f"{GRAPH_BASE}/pages/search"
     params = {"q": search_query, "fields": "id,name,location", "access_token": META_ACCESS_TOKEN}
 
     try:
@@ -121,7 +127,7 @@ def get_meta_location_id(location_name: str):
         data = response.json()
         if "data" in data:
             for place in data["data"]:
-                if "location" in place: # Must have a physical address to work on IG
+                if "location" in place:  # Must have a physical address to work on IG
                     print(f"     ✅ Found Meta Place: {place.get('name')} (ID: {place['id']})")
                     return place["id"]
 
@@ -130,7 +136,6 @@ def get_meta_location_id(location_name: str):
     except Exception as e:
         print(f"     ❌ Location search failed: {e}")
         return None
- 
 
 
 def get_threads_location_id(location_name: str):
@@ -151,7 +156,7 @@ def get_threads_location_id(location_name: str):
             best = results[0]
             print(f"     ✅ Found Threads location: {best.get('name')} (ID: {best['id']})")
             return str(best["id"])
-            
+
         print(f"     ⚠️ No Threads location found. Posting without geotag.")
         return None
     except Exception as e:
@@ -165,7 +170,7 @@ def get_threads_location_id(location_name: str):
 def poll_container_status(container_id: str, platform: str, token: str, max_retries: int = 6) -> bool:
     """Actively polls Meta's servers until the image is 100% processed."""
     print(f"     ⏳ Polling {platform} container status...")
-    base_url = "https://graph.facebook.com/v19.0" if platform == "IG" else "https://graph.threads.net/v1.0"
+    base_url = GRAPH_BASE if platform == "IG" else "https://graph.threads.net/v1.0"
     url = f"{base_url}/{container_id}"
     params = {"fields": "status_code" if platform == "IG" else "status", "access_token": token}
 
@@ -190,7 +195,7 @@ def poll_container_status(container_id: str, platform: str, token: str, max_retr
     return False
 
 
-# Each publisher function now RETURNS True/False instead of only printing,
+# Each publisher function RETURNS True/False instead of only printing,
 # so the caller can decide whether it's safe to delete the source files.
 
 def post_to_facebook(image_url: str, caption: str) -> bool:
@@ -199,7 +204,7 @@ def post_to_facebook(image_url: str, caption: str) -> bool:
     print("  -> Posting to Facebook Page...")
     try:
         upload = requests.post(
-            f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos",
+            f"{GRAPH_BASE}/{FB_PAGE_ID}/photos",
             data={"url": image_url, "published": "false", "access_token": META_ACCESS_TOKEN},
             timeout=60,
         ).json()
@@ -208,7 +213,7 @@ def post_to_facebook(image_url: str, caption: str) -> bool:
             return False
 
         post = requests.post(
-            f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed",
+            f"{GRAPH_BASE}/{FB_PAGE_ID}/feed",
             data={
                 "message": caption,
                 "attached_media": json.dumps([{"media_fbid": upload["id"]}]),
@@ -228,39 +233,55 @@ def post_to_facebook(image_url: str, caption: str) -> bool:
 
 def post_to_instagram_feed(image_url: str, caption: str, alt_text: str, location_id: str) -> bool:
     print("  -> Posting to Instagram Feed...")
-    container_url = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media"
+    container_url = f"{GRAPH_BASE}/{IG_USER_ID}/media"
     container_payload = {"image_url": image_url, "caption": caption, "access_token": META_ACCESS_TOKEN}
 
+    # The Instagram Graph API field is "alt_text". The old "accessibility_caption" name
+    # isn't a Graph API field, so Instagram silently ignored it and posts went out without alt text.
     if alt_text:
-        container_payload["accessibility_caption"] = alt_text
+        container_payload["alt_text"] = alt_text
     if location_id:
         container_payload["location_id"] = location_id
 
-    try:
-        container_res = requests.post(container_url, data=container_payload, timeout=30).json()
-    except Exception as e:
-        print(f"     ❌ IG Container request failed: {e}")
-        return False
-
-    if "id" not in container_res and location_id:
-        print(f"     ⚠️ IG Container Error with location tag: {container_res}")
-        print("     ↻ Retrying without the location tag...")
-        container_payload.pop("location_id", None)
+    def create_container():
         try:
-            container_res = requests.post(container_url, data=container_payload, timeout=30).json()
+            return requests.post(container_url, data=container_payload, timeout=30).json()
         except Exception as e:
             print(f"     ❌ IG Container request failed: {e}")
+            return None
+
+    container_res = create_container()
+    if container_res is None:
+        return False
+
+    # If the container is rejected, drop the optional fields one at a time (geotag first,
+    # then alt text) so a problem with either one can't block the whole post.
+    for field, label in (("location_id", "location tag"), ("alt_text", "alt text")):
+        if "id" in container_res or field not in container_payload:
+            continue
+        print(f"     ⚠️ IG Container Error with {label}: {container_res}")
+        print(f"     ↻ Retrying without the {label}...")
+        container_payload.pop(field)
+        container_res = create_container()
+        if container_res is None:
             return False
 
     if "id" not in container_res:
         print(f"     ❌ IG Container Error: {container_res}")
         return False
 
+    if "alt_text" in container_payload:
+        print(f"     ♿ Alt text attached ({len(alt_text)} characters).")
+    elif alt_text:
+        print("     ⚠️ Instagram rejected the alt text (see error above); this post has NO alt text.")
+    else:
+        print("     ⚠️ No alt text found in the caption file; this post has NO alt text.")
+
     container_id = container_res["id"]
     if not poll_container_status(container_id, "IG", META_ACCESS_TOKEN):
         return False
 
-    publish_url = f"https://graph.facebook.com/v19.0/{IG_USER_ID}/media_publish"
+    publish_url = f"{GRAPH_BASE}/{IG_USER_ID}/media_publish"
     publish_payload = {"creation_id": container_id, "access_token": META_ACCESS_TOKEN}
     try:
         pub_res = requests.post(publish_url, data=publish_payload, timeout=30)
@@ -278,7 +299,7 @@ def post_to_threads(image_url: str, caption: str, alt_text: str, location_id: st
     print("  -> Posting to Threads...")
     container_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}/threads"
     container_payload = {"media_type": "IMAGE", "image_url": image_url, "text": caption,
-                          "access_token": THREADS_ACCESS_TOKEN}
+                         "access_token": THREADS_ACCESS_TOKEN}
 
     if alt_text:
         container_payload["alt_text"] = alt_text
@@ -375,6 +396,10 @@ def publish_due_posts() -> int:
             continue
 
         caption, alt_text = extract_caption(txt_path.read_text(encoding="utf-8"))
+        if alt_text:
+            print(f"  ♿ Alt text found ({len(alt_text)} characters): {alt_text[:80]}...")
+        else:
+            print(f"  ⚠️ No 'Alt Text:' section found in {txt_path.name}; posting without alt text.")
         location_name = f"{entry['city']}, {entry['country']}"
         pending = [p for p in PLATFORMS if not pub[p]]
         pub["attempts"] += 1
