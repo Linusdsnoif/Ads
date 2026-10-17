@@ -10,10 +10,10 @@
   "timezone": "Asia/Riyadh",
   "scheduled_local": "2026-10-25T07:00:00+03:00",
   "scheduled_utc": "2026-10-25T04:00:00+00:00",
-  "image": "modeled_Breathable_Baby_Carrier_ARABIC_2.jpg",
-  "caption": "modeled_Breathable_Baby_Carrier_ARABIC_2.txt",
+  "image": "modeled_Breathable_Baby_Carrier_ARABIC_3.jpg",
+  "caption": null,
   "review": "pending",
-  "regenerations": 1,
+  "regenerations": 2,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
