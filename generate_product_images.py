@@ -310,25 +310,30 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             reference photos is only a product model: the guardian must be a different person with a
             completely different face.
 
-            Framing: medium shot from mid-thigh to just above the guardian's head, camera at chest height.
-            The guardian faces the camera straight on or turned no more than 20 degrees, so the guardian's
-            full face, the baby's face, and the entire front of the carrier, including the hip seat, are
-            all clearly visible and in sharp focus.
+            Framing: a medium shot from mid-thigh up, with clear space above the guardian's head. The
+            guardian's entire face, from hairline to chin, is fully inside the frame and in sharp focus.
+            The camera is at chest height. The guardian's body is turned about 20 degrees toward the
+            viewer's right, so the guardian's right hip angles slightly toward the camera while the front
+            of the carrier stays clearly visible.
 
             Subject & Scene: exactly one guardian and one baby. The guardian is a smiling woman or man,
-            aged 25-40, of diverse ethnicity, with a natural, friendly face fully visible and unobstructed,
-            looking at the camera or down at the baby with a warm expression. The setting is a random
-            everyday scenario where a carrier is useful, such as an outdoor farmers market, a supermarket,
-            home, or a park, with casual hair and clothing to match. The guardian stands or walks in a
-            relaxed posture, hands resting lightly on the baby's legs or the sides of the carrier, never
-            covering the front panel.
+            aged 25-40, of diverse ethnicity, looking at the camera or down at the baby with a warm
+            expression. The setting is a random everyday scenario where a carrier is useful, such as an
+            outdoor farmers market, a supermarket, home, or a park, with casual hair and clothing to match.
+            The guardian stands or walks in a relaxed posture, hands resting lightly on the baby's legs,
+            never covering the front panel.
             The baby faces outward, looks directly at the camera with a calm, happy expression, and sits
             securely on the hip seat. The folded head flap sits just under the baby's chin. The baby's arms
             come out over the sides of the panel, and the legs hang naturally through the leg openings.
 
             Product Design (strictly follow this): a hip-seat baby carrier in a soft two-tone gray.
-            - Main body: smooth, matte, warm light taupe-gray canvas (about #B3ACAE). This is the dominant
-            color of the straps, front panel, and hip seat.
+            - Main body: smooth, matte, warm light taupe-gray canvas (about #B3ACAE). This is the color of
+            the shoulder straps, the front panel, and the hip seat.
+            - Shoulder straps: wide, thick, padded straps covered entirely in the same smooth, solid
+            taupe-gray canvas as the main body, with matching taupe-gray edges. Each strap is one uniform
+            color across its full width and length. On each strap, a round black snap button is joined
+            by a short black elastic loop to a second black snap button fastened at the top corner of
+            the head flap.
             - Head flap: folded down across the top of the front panel as a wide, rounded, padded roll of
             smooth cool blue-gray fabric (about #A5A8B5), slightly bluer and darker than the main body.
             - Mesh window: directly below the flap, a horizontal rounded-rectangle window of very light
@@ -337,24 +342,34 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             - Front panel: below the mesh window, smooth taupe-gray fabric that narrows to a soft pointed
             tip between the baby's legs. At each leg opening sits a padded, wing-shaped cushion of dark
             charcoal 3D mesh (about #6E727C).
-            - Shoulder straps: wide, thick, padded taupe-gray straps with a thin dark charcoal edge where
-            the mesh lining shows. On each strap, a round black snap button is joined by a short black
-            elastic loop to a second black snap button fastened at the top corner of the head flap.
+            - Mesh appears in exactly three places: the light gray window below the flap and the two
+            charcoal leg cushions. Every other surface of the carrier is smooth, solid canvas.
             - Hip seat: a tall, firm, padded taupe-gray waist belt, about as tall as a hand is long, worn
-            around the guardian's waist directly under the baby. A taupe-gray zippered storage pouch is
-            built into the side of the hip seat on the wearer's right hip (viewer's left).
-            - Dark accents are limited to the charcoal leg cushions, strap edges, black snap buttons and
-            elastic loops, and dark charcoal (about #3A3A3C) webbing and buckles.
+            around the guardian's waist directly under the baby. The center front of the hip seat,
+            directly below the baby, is plain, smooth taupe-gray fabric.
+            - Storage pouch: a taupe-gray zippered pouch built into the hip seat on the guardian's right
+            hip, directly below the guardian's right elbow (on the viewer's left side of the image). It
+            sits on the side of the waist, well away from the center, with its zipper running
+            horizontally along its top edge.
+            - Dark accents: the charcoal leg cushions, black snap buttons and elastic loops, and dark
+            charcoal (about #3A3A3C) webbing adjusters and buckles.
 
             Branding: the logo is a small anchor symbol directly above the word "LUFFCABO", printed in
             muted slate blue-gray directly onto the taupe fabric, with the fabric visible all around it.
             - Logo 1: centered on the front panel just below the mesh window, about the size of the
             baby's palm.
-            - Logo 2: very small, in the lower corner of the hip-seat storage pouch.
+            - Logo 2: very small, in the lower front corner of the side storage pouch.
             Spell "LUFFCABO" exactly.
 
             Anatomy: the guardian has exactly two arms and two hands. The baby has exactly two arms,
             two hands, two legs, and two feet.
+
+            Final check before output:
+            1. The shoulder straps are solid smooth taupe-gray from edge to edge.
+            2. The storage pouch is on the guardian's right hip, on the side of the waist, and the center
+            front of the hip seat is plain.
+            3. The guardian's whole face is visible in the frame.
+            4. "LUFFCABO" is spelled correctly.
             """
         ),
         "Gray stroller cup holder": (
