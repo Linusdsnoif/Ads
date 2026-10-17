@@ -303,41 +303,53 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             "The baby should have only 2 hands."
         ),
         "Gray Baby Carrier": (
-            f"""Role & Style: You are an expert product photographer.
-            Generate one single, vibrant, high-end commercial lifestyle photograph: one shot, one camera angle.
-            The reference images are product photos. Copy the carrier from them exactly, and ignore any
-            circular inset close-ups, labels, arrows, or text in them.
+            f"""Role & Style: You are an expert commercial product photographer. Generate one single,
+            vibrant, photorealistic lifestyle photograph: one shot, one camera angle.
+            The reference images show the exact product. Copy the carrier from them in every detail, and
+            ignore any circular inset close-ups, labels, arrows, or text in them. The woman in the
+            reference photos is only a product model: the guardian must be a different person with a
+            completely different face.
 
-            Subject & Scene: Exactly one guardian and one baby. The guardian is a smiling woman or man,
-            aged 25-40, of diverse ethnicity, comfortably wearing the carrier. The setting is a random
+            Framing: medium shot from mid-thigh to just above the guardian's head, camera at chest height.
+            The guardian faces the camera straight on or turned no more than 20 degrees, so the guardian's
+            full face, the baby's face, and the entire front of the carrier, including the hip seat, are
+            all clearly visible and in sharp focus.
+
+            Subject & Scene: exactly one guardian and one baby. The guardian is a smiling woman or man,
+            aged 25-40, of diverse ethnicity, with a natural, friendly face fully visible and unobstructed,
+            looking at the camera or down at the baby with a warm expression. The setting is a random
             everyday scenario where a carrier is useful, such as an outdoor farmers market, a supermarket,
-            home, or a park, with casual hair and clothing to match. The guardian has a natural, relaxed
-            posture, with hands resting lightly on the sides of the carrier or the baby's legs so the whole
-            front of the carrier stays visible.
+            home, or a park, with casual hair and clothing to match. The guardian stands or walks in a
+            relaxed posture, hands resting lightly on the baby's legs or the sides of the carrier, never
+            covering the front panel.
             The baby faces outward, looks directly at the camera with a calm, happy expression, and sits
-            securely on the carrier's hip seat with legs hanging naturally on either side of the front panel.
-            The baby's hands rest on the top edge of the carrier, holding nothing.
+            securely on the hip seat. The folded head flap sits just under the baby's chin. The baby's arms
+            come out over the sides of the panel, and the legs hang naturally through the leg openings.
 
-            Product Design (strictly follow this): a hip-seat baby carrier in a two-tone gray color scheme.
-            - Main body: smooth, matte, warm taupe-gray (greige) canvas. This is the dominant color.
-            - Hip seat: the waist belt is a tall, firm, padded hip seat, about as tall as a hand is long,
-            wrapping around the guardian's waist in a structured box shape. Its flat top shelf is lined
-            with dark charcoal mesh, and the baby sits on this shelf. A taupe-gray zippered storage pouch
-            is built into the front of the hip seat on the wearer's right hip (viewer's left).
-            - Head-support flap: folded down across the top of the front panel, made of a smooth, slightly
-            sheeny, cool medium-gray fabric that is visibly darker than the main body. Its two top corners
-            attach to the shoulder straps with round black snap buttons, each with a tiny white logo icon.
-            - Front panel: smooth taupe-gray fabric below the flap, with a gray zipper curving down one side
-            (the breathable panel, zipped closed). Dark charcoal mesh shows at the sides near the baby's legs.
-            - Shoulder straps: thick padded taupe-gray straps with dark charcoal mesh lining visible along
-            their edges, dark charcoal webbing adjustment straps, and a dark charcoal chest strap with a
-            dark gray plastic buckle.
-            - The only dark accents are the charcoal mesh, charcoal webbing, buckles, and black snap buttons.
-            Every other surface is taupe-gray, except the darker gray head flap.
+            Product Design (strictly follow this): a hip-seat baby carrier in a soft two-tone gray.
+            - Main body: smooth, matte, warm light taupe-gray canvas (about #B3ACAE). This is the dominant
+            color of the straps, front panel, and hip seat.
+            - Head flap: folded down across the top of the front panel as a wide, rounded, padded roll of
+            smooth cool blue-gray fabric (about #A5A8B5), slightly bluer and darker than the main body.
+            - Mesh window: directly below the flap, a horizontal rounded-rectangle window of very light
+            gray perforated mesh (about #D4D4D8) edged with light gray piping, about two-thirds the
+            width of the front panel.
+            - Front panel: below the mesh window, smooth taupe-gray fabric that narrows to a soft pointed
+            tip between the baby's legs. At each leg opening sits a padded, wing-shaped cushion of dark
+            charcoal 3D mesh (about #6E727C).
+            - Shoulder straps: wide, thick, padded taupe-gray straps with a thin dark charcoal edge where
+            the mesh lining shows. On each strap, a round black snap button is joined by a short black
+            elastic loop to a second black snap button fastened at the top corner of the head flap.
+            - Hip seat: a tall, firm, padded taupe-gray waist belt, about as tall as a hand is long, worn
+            around the guardian's waist directly under the baby. A taupe-gray zippered storage pouch is
+            built into the side of the hip seat on the wearer's right hip (viewer's left).
+            - Dark accents are limited to the charcoal leg cushions, strap edges, black snap buttons and
+            elastic loops, and dark charcoal (about #3A3A3C) webbing and buckles.
 
-            Branding: the logo is a small anchor symbol directly above the word "LUFFCABO", printed in dark
-            slate gray directly onto the taupe fabric, with the fabric visible all around it.
-            - Logo 1: centered on the front panel just below the head flap, about the size of the baby's palm.
+            Branding: the logo is a small anchor symbol directly above the word "LUFFCABO", printed in
+            muted slate blue-gray directly onto the taupe fabric, with the fabric visible all around it.
+            - Logo 1: centered on the front panel just below the mesh window, about the size of the
+            baby's palm.
             - Logo 2: very small, in the lower corner of the hip-seat storage pouch.
             Spell "LUFFCABO" exactly.
 
