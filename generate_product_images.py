@@ -268,7 +268,6 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             visible all around the letters: a small anchor symbol above the word "LUFFCABO".
             - Logo 1: centered on the front panel just below the mesh window, about the width of the baby's palm.
             - Logo 2: very small, in the lower corner of the waist-belt pouch.
-            
             """
         ),
         "Breathable Baby CarrierM": (
@@ -786,7 +785,6 @@ def generate_caption(
             log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
             response = client.models.generate_content(
                 model="gemini-3.1-flash-image",
-                thinking_level = "medium",
                 contents=[text_prompt, img],
             )
             txt_output_path = output_folder / f"{img_path.stem}.txt"
