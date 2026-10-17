@@ -61,7 +61,7 @@ log = logging.getLogger("product_image_gen")
 # --------------------------------------------------------------------------- #
 # Static configuration
 # --------------------------------------------------------------------------- #
-MODEL_NAME = "gemini-3.5-flash-image"
+MODEL_NAME = "gemini-3.1-flash-image"
 
 PRODUCT_LIST = [
     "Automatic Nail Clipper(ENC)",
@@ -788,7 +788,7 @@ def generate_caption(
         try:
             log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
             response = client.models.generate_content(
-                model="gemini-3.5-flash",
+                model="gemini-3.1-flash-image",
                 thinking_level = "medium",
                 contents=[text_prompt, img],
             )
