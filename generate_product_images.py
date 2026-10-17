@@ -303,27 +303,46 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             "The baby should have only 2 hands."
         ),
         "Gray Baby Carrier": (
-            f"""Role & Style: You are an expert product photographer. 
-            There should strictly only has one baby and a guardian in the frame.
-            Generate a single, vibrant, dynamic high-end commercial lifestyle photograph. 
-            Do not generate multiple angles; it should only contain one shot.
-            Subject & Scene: The image features exactly one guardian and one baby. 
-            The guardian is a smiling woman or man, aged 25-40, of diverse ethnicity, comfortably wearing an ergonomic baby carrier. 
-            The setting should be a random lifestyle scenario where the carrier is naturally needed, such as a sunny outdoor farmers market, a supermarket, at home or a park. 
-            The guardian should have a casual hairstyle and clothing style suitable for the chosen setting. 
-            The guardian should do a natural, casual posture that fits the scenario to show the convenience of the product.
-            **The Baby must face outward and look at directly at the camera and looks just fine, and make sure the baby is sitting in the baby carrier**
-            Product Design (Strictly follow this): The baby carrier's main body is made of a smooth, solid light gray nylon/canvas material—do not make the entire carrier mesh, and a storiage zipper bag on the right side of the waist belt.
-            The top head-support panel is folded down, showing a smooth light gray exterior, and revealing a small rounded breathable light gray mesh below the fold panel.
-            The shoulder straps and thick waist belt are solid light gray. 
-            The fastening loop connecting the main panel to the shoulder straps must be light gray connecting black circular buckles.
-            Branding: The brand logo must be perfectly legible and clearly seen in light gray color and not in white square frames. It should just naturally paste on the product. 
-            The logo consists of a anchor symbol positioned directly above the text "LUFFCABO".
-            This logo must be accurately placed in two specific locations: small brand logo centered on the smooth light gray beneath the round breathable mesh panel size at (1.5cm x 1.5cm), and very tiny logo at the corner of the side storage zipper bag on the waist belt (0.5cm x 0.5cm) without in any frame, naturally paste on the product. 
-            Carefully reference the reference images to make sure the product design is identical.
-            Make sure the text LUFFCABO is spelled correctly.
-            The guardian should have only 2 hands.
-            The baby should have only 2 hands.
+            f"""Role & Style: You are an expert product photographer.
+            Generate one single, vibrant, high-end commercial lifestyle photograph: one shot, one camera angle.
+            The reference images are product photos. Copy the carrier from them exactly, and ignore any
+            circular inset close-ups, labels, arrows, or text in them.
+
+            Subject & Scene: Exactly one guardian and one baby. The guardian is a smiling woman or man,
+            aged 25-40, of diverse ethnicity, comfortably wearing the carrier. The setting is a random
+            everyday scenario where a carrier is useful, such as an outdoor farmers market, a supermarket,
+            home, or a park, with casual hair and clothing to match. The guardian has a natural, relaxed
+            posture, with hands resting lightly on the sides of the carrier or the baby's legs so the whole
+            front of the carrier stays visible.
+            The baby faces outward, looks directly at the camera with a calm, happy expression, and sits
+            securely on the carrier's hip seat with legs hanging naturally on either side of the front panel.
+            The baby's hands rest on the top edge of the carrier, holding nothing.
+
+            Product Design (strictly follow this): a hip-seat baby carrier in a two-tone gray color scheme.
+            - Main body: smooth, matte, warm taupe-gray (greige) canvas. This is the dominant color.
+            - Hip seat: the waist belt is a tall, firm, padded hip seat, about as tall as a hand is long,
+            wrapping around the guardian's waist in a structured box shape. Its flat top shelf is lined
+            with dark charcoal mesh, and the baby sits on this shelf. A taupe-gray zippered storage pouch
+            is built into the front of the hip seat on the wearer's right hip (viewer's left).
+            - Head-support flap: folded down across the top of the front panel, made of a smooth, slightly
+            sheeny, cool medium-gray fabric that is visibly darker than the main body. Its two top corners
+            attach to the shoulder straps with round black snap buttons, each with a tiny white logo icon.
+            - Front panel: smooth taupe-gray fabric below the flap, with a gray zipper curving down one side
+            (the breathable panel, zipped closed). Dark charcoal mesh shows at the sides near the baby's legs.
+            - Shoulder straps: thick padded taupe-gray straps with dark charcoal mesh lining visible along
+            their edges, dark charcoal webbing adjustment straps, and a dark charcoal chest strap with a
+            dark gray plastic buckle.
+            - The only dark accents are the charcoal mesh, charcoal webbing, buckles, and black snap buttons.
+            Every other surface is taupe-gray, except the darker gray head flap.
+
+            Branding: the logo is a small anchor symbol directly above the word "LUFFCABO", printed in dark
+            slate gray directly onto the taupe fabric, with the fabric visible all around it.
+            - Logo 1: centered on the front panel just below the head flap, about the size of the baby's palm.
+            - Logo 2: very small, in the lower corner of the hip-seat storage pouch.
+            Spell "LUFFCABO" exactly.
+
+            Anatomy: the guardian has exactly two arms and two hands. The baby has exactly two arms,
+            two hands, two legs, and two feet.
             """
         ),
         "Gray stroller cup holder": (
