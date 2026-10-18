@@ -1,15 +1,15 @@
 {
   "batch_id": "2026-10-11",
-  "slot": "sat",
+  "slot": "sun",
   "product_name": "Gray stroller cup holder(Gtray)",
   "arabic_variant": false,
-  "day": "Saturday",
-  "city": "Perth",
-  "country": "Australia",
+  "day": "Sunday",
+  "city": "Los Angeles",
+  "country": "United States",
   "language": "English",
-  "timezone": "Australia/Perth",
-  "scheduled_local": "2026-10-17T07:00:00+08:00",
-  "scheduled_utc": "2026-10-16T23:00:00+00:00",
+  "timezone": "America/Los_Angeles",
+  "scheduled_local": "2026-10-18T07:00:00-07:00",
+  "scheduled_utc": "2026-10-18T14:00:00+00:00",
   "image": "modeled_Gray_stroller_cup_holder_1.jpg",
   "caption": "modeled_Gray_stroller_cup_holder_1.txt",
   "review": "approved",
@@ -21,7 +21,7 @@
     "attempts": 0,
     "done": false,
     "stopped": false,
-    "missed": true,
+    "missed": false,
     "posted_at": null
   }
 }
