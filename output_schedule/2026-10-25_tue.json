@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-25",
+  "slot": "tue",
+  "product_name": "Gray stroller cup holder(Gtray)",
+  "arabic_variant": false,
+  "day": "Tuesday",
+  "city": "Chicago",
+  "country": "USA",
+  "language": "English",
+  "timezone": "America/Chicago",
+  "scheduled_local": "2026-10-27T07:00:00-05:00",
+  "scheduled_utc": "2026-10-27T12:00:00+00:00",
+  "image": "modeled_Gray_stroller_cup_holder_1.jpg",
+  "caption": "modeled_Gray_stroller_cup_holder_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

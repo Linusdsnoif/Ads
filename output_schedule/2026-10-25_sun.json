@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-25",
+  "slot": "sun",
+  "product_name": "Breathable Baby CarrierM(BCM)",
+  "arabic_variant": true,
+  "day": "Sunday",
+  "city": "Riyadh",
+  "country": "Saudi Arabia",
+  "language": "Arabic",
+  "timezone": "Asia/Riyadh",
+  "scheduled_local": "2026-11-01T07:00:00+03:00",
+  "scheduled_utc": "2026-11-01T04:00:00+00:00",
+  "image": "modeled_Breathable_Baby_CarrierM_ARABIC_1.jpg",
+  "caption": "modeled_Breathable_Baby_CarrierM_ARABIC_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

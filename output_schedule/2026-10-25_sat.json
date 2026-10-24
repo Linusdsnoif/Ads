@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-25",
+  "slot": "sat",
+  "product_name": "Breathable Baby Carrier(BBC)",
+  "arabic_variant": false,
+  "day": "Saturday",
+  "city": "Birmingham",
+  "country": "UK",
+  "language": "English",
+  "timezone": "Europe/London",
+  "scheduled_local": "2026-10-31T07:00:00+00:00",
+  "scheduled_utc": "2026-10-31T07:00:00+00:00",
+  "image": "modeled_Breathable_Baby_Carrier_5.jpg",
+  "caption": "modeled_Breathable_Baby_Carrier_5.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

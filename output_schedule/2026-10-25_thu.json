@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-10-25",
+  "slot": "thu",
+  "product_name": "Baby Sculpting Device(BSM)",
+  "arabic_variant": false,
+  "day": "Thursday",
+  "city": "Antwerp",
+  "country": "Belgium",
+  "language": "French",
+  "timezone": "Europe/Brussels",
+  "scheduled_local": "2026-10-29T07:00:00+01:00",
+  "scheduled_utc": "2026-10-29T06:00:00+00:00",
+  "image": "modeled_Baby_Sculpting_Device_1.jpg",
+  "caption": "modeled_Baby_Sculpting_Device_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}
