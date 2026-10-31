@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-11-01",
+  "slot": "tue",
+  "product_name": "Automatic Nail Clipper(ENC)",
+  "arabic_variant": false,
+  "day": "Tuesday",
+  "city": "Chicago",
+  "country": "USA",
+  "language": "English",
+  "timezone": "America/Chicago",
+  "scheduled_local": "2026-11-03T07:00:00-06:00",
+  "scheduled_utc": "2026-11-03T13:00:00+00:00",
+  "image": null,
+  "caption": null,
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}
