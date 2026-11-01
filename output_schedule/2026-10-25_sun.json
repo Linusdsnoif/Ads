@@ -21,7 +21,7 @@
     "attempts": 0,
     "done": false,
     "stopped": false,
-    "missed": false,
+    "missed": true,
     "posted_at": null
   }
 }
