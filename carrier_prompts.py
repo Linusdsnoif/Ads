@@ -8,6 +8,12 @@ photos.
 
 Choices are paired so each scene stays logical:
   - every setting has its own lighting, climate and activities that fit it
+  - every activity says exactly what BOTH of the guardian's hands are doing, so
+    the model never has a spare hand to hide (a hidden hand usually comes out as
+    a missing one)
+  - activities are ones a real parent can do with a baby facing outward: nothing
+    that needs the arms to reach around the baby, and nothing the baby's legs
+    would bump into (shopping carts, desks, sinks, counters)
   - climate decides clothing, and the guardian's clothing always contrasts with
     the carrier so its outline and logo stay visible
   - babies are 6-15 months old, old enough to face outward with steady head control
@@ -145,6 +151,8 @@ CARRIER_PRODUCTS = {
 
 COMMON_CHECKS = [
     "The guardian's whole face is visible in the frame.",
+    "Follow each of the guardian's sleeves to its end: each ends in a visible hand with five fingers, doing "
+    "exactly what HANDS describes. No arm fades out, stops at the baby, or disappears behind the baby or carrier.",
     "The baby faces outward and looks toward the camera.",
     "There is exactly one guardian and one baby, both with normal anatomy.",
 ]
@@ -157,57 +165,137 @@ ETHNICITIES = [
     "Middle Eastern", "white", "mixed-race", "Pacific Islander",
 ]
 
-# (place, lighting, climate, activities). Every activity fits its place and keeps
-# hot drinks and sharp objects away from the baby.
+# Where the guardian's second hand goes when the activity only uses one. Each
+# position is natural for a parent carrying an outward-facing baby, easy for the
+# camera to see, and clear of the front logo.
+OTHER_HAND = [
+    "the other hand rests lightly on the outside of the baby's knee, at the side of the carrier",
+    "the other hand gently holds one of the baby's feet",
+    "the other hand holds the shoulder strap at chest height, beside the baby's shoulder",
+    "the other hand rests on the side of the carrier's waist belt, clear of any logo",
+    "the other arm hangs relaxed at the guardian's side, the hand open and visible",
+]
+
+# (place, lighting, climate, [(activity, hands)]). `hands` says what both hands
+# do; "{other}" is filled from OTHER_HAND. Activities keep the baby's legs clear
+# of furniture and keep hot drinks and sharp objects away from the baby.
 SETTINGS = [
-    ("a bright grocery store produce aisle", "even, bright store lighting", "indoor",
-     ["choosing an apple from the produce display", "pushing a shopping cart along the aisle"]),
-    ("an open-air farmers market", "soft morning sunlight", "mild",
-     ["browsing a crate of fresh peaches", "holding a paper bag of vegetables"]),
-    ("a cozy home kitchen", "warm morning light from a window", "indoor",
-     ["unpacking groceries onto the counter", "rinsing berries in a colander at the sink"]),
-    ("a sunny home office with plants and a wooden desk", "soft natural window light", "indoor",
-     ["sitting at the desk typing on a laptop", "standing at the desk reading a document"]),
-    ("a living room with a sofa and soft rugs", "soft afternoon light", "indoor",
-     ["folding small baby clothes", "standing by the window, pointing outside for the baby"]),
-    ("a quiet bookstore aisle with wooden shelves", "warm indoor light", "indoor",
-     ["browsing a book held open in one hand"]),
-    ("a bright art gallery with abstract paintings on white walls", "soft gallery lighting", "indoor",
-     ["standing in front of a painting, looking at it"]),
-    ("an airport terminal beside floor-to-ceiling windows", "natural window light", "indoor",
-     ["walking while pulling a carry-on suitcase"]),
-    ("a tree-lined city sidewalk", "soft overcast light", "mild",
-     ["walking and glancing down at the baby", "holding a lidded takeaway coffee out to the side, away from the baby"]),
-    ("a forest walking trail", "dappled sunlight through the trees", "mild",
-     ["walking along the trail"]),
-    ("a botanical garden path among flowering bushes", "bright spring daylight", "mild",
-     ["walking slowly past the flowers"]),
-    ("a seaside boardwalk", "warm golden-hour light", "warm",
-     ["walking along the boardwalk", "standing at the railing looking out to sea"]),
-    ("a sunny backyard garden", "warm afternoon light", "warm",
-     ["watering potted plants with a small watering can"]),
-    ("an outdoor winter market with string lights", "the warm glow of string lights at dusk", "cold",
-     ["holding a lidded cup of hot cocoa out to the side, away from the baby"]),
-    ("a snowy residential street", "crisp, bright winter sun", "cold",
-     ["walking along the cleared sidewalk"]),
+    ("a bright grocery store produce aisle", "even, bright store lighting", "indoor", [
+        ("choosing an apple from the produce display",
+         "one hand picks up an apple from the display, and {other}"),
+        ("carrying a shopping basket along the aisle",
+         "one hand carries a small shopping basket down at the side, and {other}"),
+    ]),
+    ("an open-air farmers market", "soft morning sunlight", "mild", [
+        ("browsing a crate of fresh peaches",
+         "one hand holds up a peach to look at it, and {other}"),
+        ("carrying a paper bag of vegetables",
+         "one arm holds a paper bag of vegetables against the guardian's side, away from the baby, and {other}"),
+    ]),
+    ("a cozy home kitchen", "warm morning light from a window", "indoor", [
+        ("testing the warmth of a baby bottle",
+         "one hand holds a baby bottle and tips a drop onto the inside of the other wrist, both hands held out "
+         "to the side of the baby"),
+        ("taking a carton of milk from the open fridge door",
+         "one hand lifts the carton from the fridge door, and {other}"),
+    ]),
+    ("a sunny home office with plants and a wooden desk", "soft natural window light", "indoor", [
+        ("standing beside the desk, reading a printed document",
+         "one hand holds the document out to the side, and {other}"),
+        ("watering a small plant on the desk",
+         "one hand tips a small watering can over the plant, and {other}"),
+    ]),
+    ("a living room with a sofa and soft rugs", "soft afternoon light", "indoor", [
+        ("standing by the window, pointing outside for the baby",
+         "one hand points out of the window, and {other}"),
+        ("showing the baby a soft toy",
+         "one hand holds a soft toy out to the side where the baby can see it, and {other}"),
+    ]),
+    ("a quiet bookstore aisle with wooden shelves", "warm indoor light", "indoor", [
+        ("browsing a book",
+         "one hand holds the open book out to the side, and {other}"),
+    ]),
+    ("a bright art gallery with abstract paintings on white walls", "soft gallery lighting", "indoor", [
+        ("standing in front of a painting, showing it to the baby",
+         "one hand points toward the painting, and {other}"),
+    ]),
+    ("an airport terminal beside floor-to-ceiling windows", "natural window light", "indoor", [
+        ("walking while pulling a carry-on suitcase",
+         "one hand pulls the suitcase by its handle, slightly behind, and {other}"),
+    ]),
+    ("a tree-lined city sidewalk", "soft overcast light", "mild", [
+        ("walking and glancing down at the baby",
+         "one hand carries a tote bag by its handles down at the side, and {other}"),
+        ("walking with a takeaway coffee",
+         "one hand holds a lidded takeaway coffee out to the side, away from the baby, and {other}"),
+    ]),
+    ("a forest walking trail", "dappled sunlight through the trees", "mild", [
+        ("walking along the trail",
+         "one hand holds a small water bottle down at the side, and {other}"),
+    ]),
+    ("a botanical garden path among flowering bushes", "bright spring daylight", "mild", [
+        ("pausing to show the baby the flowers",
+         "one hand gently lifts a flower on a nearby bush toward the baby, and {other}"),
+    ]),
+    ("a seaside boardwalk", "warm golden-hour light", "warm", [
+        ("walking along the boardwalk",
+         "one hand holds a pair of sunglasses down at the side, and {other}"),
+        ("standing at the railing looking out to sea",
+         "one hand rests on the railing beside the guardian, and {other}"),
+    ]),
+    ("a sunny backyard garden", "warm afternoon light", "warm", [
+        ("watering potted plants",
+         "one hand tips a small watering can over a pot, out to the side, and {other}"),
+    ]),
+    ("an outdoor winter market with string lights", "the warm glow of string lights at dusk", "cold", [
+        ("holding a cup of hot cocoa",
+         "one hand holds a lidded cup of hot cocoa out to the side, away from the baby, and {other}"),
+    ]),
+    ("a snowy residential street", "crisp, bright winter sun", "cold", [
+        ("walking along the cleared sidewalk",
+         "one gloved hand carries a small paper shopping bag down at the side, and {other}"),
+    ]),
 ]
 
 # Used only for the Arabic (Saudi Arabia / UAE) post.
 GULF_SETTINGS = [
-    ("a waterfront corniche promenade lined with palm trees", "warm late-afternoon sun", "gulf",
-     ["walking along the promenade", "pausing to look out at the water"]),
-    ("a modern shopping mall atrium with marble floors", "bright, even indoor light", "gulf",
-     ["browsing a shop window", "walking while holding a small shopping bag"]),
-    ("a landscaped city park with palm trees and a fountain", "golden-hour light", "gulf",
-     ["walking along the park path"]),
-    ("a bright modern living room with geometric-patterned cushions and warm gold accents", "soft, warm light", "gulf",
-     ["arranging dates on a serving plate at a low table", "reading a picture book to the baby"]),
-    ("a supermarket aisle stocked with dates and fresh produce", "even, bright store lighting", "gulf",
-     ["choosing a box of dates from the shelf"]),
-    ("a café terrace on a palm-lined boulevard", "soft morning sun", "gulf",
-     ["holding a lidded iced coffee out to the side, away from the baby"]),
-    ("a modern airport terminal with sweeping white architecture", "natural window light", "gulf",
-     ["walking while pulling a carry-on suitcase"]),
+    ("a waterfront corniche promenade lined with palm trees", "warm late-afternoon sun", "gulf", [
+        ("walking along the promenade",
+         "one hand holds a small water bottle down at the side, and {other}"),
+        ("pausing at the railing to look out at the water",
+         "one hand rests on the railing beside the guardian, and {other}"),
+    ]),
+    ("a modern shopping mall atrium with marble floors", "bright, even indoor light", "gulf", [
+        ("browsing a shop window",
+         "one hand points at something in the window for the baby, and {other}"),
+        ("walking while carrying a small shopping bag",
+         "one hand carries the shopping bag down at the side, and {other}"),
+    ]),
+    ("a landscaped city park with palm trees and a fountain", "golden-hour light", "gulf", [
+        ("walking along the park path",
+         "one hand holds a pair of sunglasses down at the side, and {other}"),
+    ]),
+    ("a bright modern living room with geometric-patterned cushions and warm gold accents", "soft, warm light", "gulf", [
+        ("reading a picture book to the baby",
+         "both hands hold a small open picture book out to one side of the baby, angled so the baby can see the "
+         "pages, leaving the carrier's front panel uncovered"),
+        ("standing by the window, showing the baby the view",
+         "one hand points out of the window, and {other}"),
+    ]),
+    ("a supermarket aisle stocked with dates and fresh produce", "even, bright store lighting", "gulf", [
+        ("choosing a box of dates from the shelf",
+         "one hand lifts a box of dates from the shelf, and {other}"),
+        ("carrying a shopping basket along the aisle",
+         "one hand carries a small shopping basket down at the side, and {other}"),
+    ]),
+    ("a café terrace on a palm-lined boulevard", "soft morning sun", "gulf", [
+        ("holding an iced coffee",
+         "one hand holds a lidded iced coffee out to the side, away from the baby, and {other}"),
+    ]),
+    ("a modern airport terminal with sweeping white architecture", "natural window light", "gulf", [
+        ("walking while pulling a carry-on suitcase",
+         "one hand pulls the suitcase by its handle, slightly behind, and {other}"),
+    ]),
 ]
 
 # {c} is filled with one of the product's contrast colors.
@@ -238,12 +326,13 @@ BABY_MOODS = [
 ]
 
 # Any body turn is toward the viewer's right, which keeps the hip-seat carriers'
-# storage pouch (on the guardian's right hip) facing the camera.
+# storage pouch (on the guardian's right hip) facing the camera. Every framing
+# goes low enough to include both hands.
 CAMERAS = [
     "Medium shot from mid-thigh up, camera at chest height, the guardian facing the camera straight on.",
     "Medium shot from mid-thigh up, camera at chest height, the guardian's body turned about 20 degrees toward "
     "the viewer's right.",
-    "Waist-up shot, camera at chest height, a little closer, with a shallow depth of field.",
+    "Shot from the upper thighs up, camera at chest height, a little closer, with a shallow depth of field.",
     "Medium-wide environmental shot from the knees up, with the setting clearly visible around the guardian.",
     "Candid shot from slightly to the side, camera at chest height, the guardian turned about 30 degrees toward "
     "the viewer's right and glancing toward the camera.",
@@ -261,7 +350,9 @@ def build_carrier_prompt(product_key: str, arabic: bool = False) -> str:
     """Return a new randomized prompt for one of the baby carriers."""
     spec = CARRIER_PRODUCTS[product_key]
     place, light, climate, activities = random.choice(GULF_SETTINGS if arabic else SETTINGS)
-    activity = random.choice(activities)
+    activity, hands = random.choice(activities)
+    if "{other}" in hands:
+        hands = hands.format(other=random.choice(OTHER_HAND))
     camera = random.choice(CAMERAS)
 
     top_color = random.choice(spec["top_colors"])
@@ -292,16 +383,21 @@ def build_carrier_prompt(product_key: str, arabic: bool = False) -> str:
         "people, poses or camera angles. The people in the reference photos are only product models: the guardian "
         "and baby must be different people with completely different faces.\n\n"
         f"CAMERA: {camera} There is clear space above the guardian's head, and the guardian's entire face, from "
-        "hairline to chin, is inside the frame and in sharp focus.\n"
+        "hairline to chin, is inside the frame and in sharp focus. Both of the guardian's hands are inside the "
+        "frame.\n"
         f"SETTING: {place}, in {light}. The background is softly out of focus.\n\n"
         f"GUARDIAN: {guardian}, wearing {outfit}, is {activity}, with a warm, natural smile. The {top_color} "
-        "clothing contrasts with the carrier, so the carrier's outline and logo stand out clearly. The guardian's "
-        "hands never cover the carrier's front panel or logo.\n\n"
+        "clothing contrasts with the carrier, so the carrier's outline and logo stand out clearly.\n\n"
+        f"HANDS: {hands[0].upper() + hands[1:]}. Both of the guardian's arms are complete from shoulder to "
+        "fingertips, and both hands are fully visible, each joined to its arm at a visible wrist. Neither hand is "
+        "tucked behind the baby or the carrier, and neither covers the front logo.\n\n"
         f"BABY: a baby, {random.randint(6, 15)} months old, wearing {baby_outfit}, who plausibly looks like the "
         f"guardian's own child, {random.choice(BABY_MOODS)}. {spec['fit']}\n\n"
         f"{spec['design']}\n\n"
         "REALISM: one consistent light direction with matching shadows; the straps sit naturally on the guardian's "
-        "shoulders and the baby's weight looks real; clothing suits the weather and the location.\n\n"
+        "shoulders and the baby's weight looks real; clothing suits the weather and the location. The pose is one "
+        "a real parent would hold comfortably: the baby's legs hang freely without pressing against shelves, "
+        "furniture or anything else, and nothing hot or sharp is within the baby's reach.\n\n"
         "CONSTRAINTS: exactly one adult and one baby. The guardian has exactly two arms and two hands; the baby has "
         "exactly two arms, two hands, two legs and two feet; every hand has five fingers. No other people, extra "
         "hands or partial figures anywhere in the frame. No text or logos anywhere except the carrier's own "
@@ -315,4 +411,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     for key in CARRIER_PRODUCTS:
         print(f"\n===== {key} =====\n{build_carrier_prompt(key)}")
-    print(f"\n===== Gray Baby Carrier (Arabic) =====\n{build_carrier_prompt('Gray Baby Carrier', arabic=True)}")
+    print(f"\n===== Breathable Baby Carrier (Arabic) =====\n{build_carrier_prompt('Breathable Baby Carrier', arabic=True)}")
