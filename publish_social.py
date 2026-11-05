@@ -15,7 +15,6 @@ import os
 import sys
 import time
 import json
-import re
 import datetime
 from pathlib import Path
 
@@ -26,6 +25,8 @@ load_dotenv()
 
 import boto3
 from botocore.config import Config
+
+from captions import caption_problems, extract_caption  # extract_caption is re-exported for older imports
 
 # ==========================================
 # 1. CREDENTIALS & CONFIG
@@ -79,22 +80,6 @@ def r2():
 # ==========================================
 # 2. HELPER FUNCTIONS
 # ==========================================
-def extract_caption(raw_text: str) -> tuple[str, str]:
-    """Pull the caption and alt text out of the Gemini output.
-    Tolerates **bold** labels and 'Alt Text:' / 'Alt-text:' / 'AltText:' spellings."""
-    text = raw_text.replace("**", "")
-    parts = re.split(r"^\s*Caption\s*:\s*", text, maxsplit=1, flags=re.M | re.I)
-    if len(parts) < 2:
-        print("     ⚠️ No 'Caption:' label found; posting the whole text file as the caption.")
-        body = text
-    else:
-        body = parts[1]
-    alt_parts = re.split(r"^\s*Alt[\s\-]*Text\s*:\s*", body, maxsplit=1, flags=re.M | re.I)
-    caption = alt_parts[0].strip()
-    alt_text = alt_parts[1].strip() if len(alt_parts) == 2 else ""
-    return caption, alt_text
-
-
 def upload_to_public_url(local_image_path: Path) -> str:
     """Uploads an image to Cloudflare R2 and returns a permanent public URL."""
     print(f"Uploading {local_image_path.name} to Cloudflare R2...")
@@ -157,7 +142,7 @@ def get_threads_location_id(location_name: str):
             print(f"     ✅ Found Threads location: {best.get('name')} (ID: {best['id']})")
             return str(best["id"])
 
-        print(f"     ⚠️ No Threads location found. Posting without geotag.")
+        print("     ⚠️ No Threads location found. Posting without geotag.")
         return None
     except Exception as e:
         print(f"     ❌ Threads location search failed: {e}")
@@ -342,6 +327,99 @@ def save_entry(path: Path, entry: dict):
         json.dump(entry, f, indent=2, ensure_ascii=False)
 
 
+def process_entry(path: Path, now: datetime.datetime) -> bool:
+    """Check one schedule file and post it if it is due and approved.
+    Returns True if it tried to post."""
+    try:
+        entry = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"⚠️ Could not read {path.name}: {e}")
+        return False
+
+    pub = entry["publish"]
+    label = f"{path.stem} [{entry['product_name']} -> {entry['city']}, {entry['country']}]"
+
+    if pub.get("done") or pub.get("stopped") or pub.get("missed"):
+        return False
+
+    sched = datetime.datetime.fromisoformat(entry["scheduled_utc"])
+    if now < sched:
+        hrs = (sched - now).total_seconds() / 3600
+        print(f"{label}: due {entry['scheduled_local'][:16]} local ({hrs:.0f}h), review={entry['review']}")
+        return False
+
+    if now > sched + datetime.timedelta(hours=GRACE_HOURS):
+        pub["missed"] = True
+        save_entry(path, entry)
+        print(f"🛑 {label}: MISSED its window (review={entry['review']}, "
+              f"posted so far={[p for p in PLATFORMS if pub[p]]}). Not posting. "
+              f"To post it anyway, set a new scheduled_utc and missed=false.")
+        return False
+
+    if entry["review"] != "approved":
+        print(f"⏸️  {label}: due now but review={entry['review']}. Waiting for approval "
+              f"(window closes {GRACE_HOURS:.0f}h after 7 AM local).")
+        return False
+
+    img_path = IMAGES_DIR / (entry["image"] or "")
+    txt_path = CAPTIONS_DIR / (entry["caption"] or "")
+    if not entry["image"] or not img_path.is_file() or not entry["caption"] or not txt_path.is_file():
+        print(f"❌ {label}: approved but image/caption file is missing. Skipping.")
+        return False
+
+    raw_text = txt_path.read_text(encoding="utf-8")
+    # A hand-edited or old caption file could be too long for Threads or missing its
+    # labels. Hold the post (it is retried every hour until the window closes) rather
+    # than posting broken text or leaving it live on only some platforms.
+    problems = caption_problems(raw_text, require_alt_text=False)
+    if problems:
+        print(f"❌ {label}: not posting, {txt_path.name} has problems: {'; '.join(problems)}. "
+              f"Fix the file, or run: python regenerate_helpers.py --batch {entry['batch_id']} "
+              f"--slot {entry['slot']} --caption-only")
+        return False
+
+    caption, alt_text = extract_caption(raw_text)
+    if alt_text:
+        print(f"  ♿ Alt text found ({len(alt_text)} characters): {alt_text[:80]}...")
+    else:
+        print(f"  ⚠️ No 'Alt Text:' section found in {txt_path.name}; posting without alt text.")
+    location_name = f"{entry['city']}, {entry['country']}"
+    pending = [p for p in PLATFORMS if not pub[p]]
+    pub["attempts"] += 1
+    print(f"\n--- Posting {label}. Pending: {pending} (attempt {pub['attempts']}/{MAX_ATTEMPTS}) ---")
+
+    try:
+        public_image_url = upload_to_public_url(img_path)
+        if "facebook" in pending:
+            pub["facebook"] = post_to_facebook(public_image_url, caption)
+        if "instagram_feed" in pending:
+            pub["instagram_feed"] = post_to_instagram_feed(
+                public_image_url, caption, alt_text, location_id=get_meta_location_id(location_name))
+        if "threads" in pending:
+            pub["threads"] = post_to_threads(
+                public_image_url, caption, alt_text, location_id=get_threads_location_id(location_name))
+    except Exception as e:
+        print(f"     ❌ Error while posting: {e}")
+
+    if all(pub[p] for p in PLATFORMS):
+        pub["done"] = True
+        pub["posted_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        img_path.unlink(missing_ok=True)
+        txt_path.unlink(missing_ok=True)
+        print(f"     ✅ All platforms succeeded. Deleted {img_path.name} and {txt_path.name}; "
+              f"{path.name} kept as a record.")
+    elif pub["attempts"] >= MAX_ATTEMPTS:
+        pub["stopped"] = True
+        print(f"     🛑 Still failing on {[p for p in PLATFORMS if not pub[p]]} after {MAX_ATTEMPTS} "
+              f"attempts. Stopped; files kept for manual review.")
+    else:
+        print(f"     ⏳ Still failing on {[p for p in PLATFORMS if not pub[p]]}; will retry next hour.")
+
+    save_entry(path, entry)
+    time.sleep(15)
+    return True
+
+
 def publish_due_posts() -> int:
     print("=== Starting Social Publisher Hourly Check ===")
 
@@ -358,83 +436,11 @@ def publish_due_posts() -> int:
     posted_any = False
 
     for path in sorted(SCHEDULE_DIR.glob("*.json")):
+        # One malformed or hand-edited file must not stop the other posts from going out.
         try:
-            entry = json.loads(path.read_text(encoding="utf-8"))
+            posted_any = process_entry(path, now) or posted_any
         except Exception as e:
-            print(f"⚠️ Could not read {path.name}: {e}")
-            continue
-
-        pub = entry["publish"]
-        label = f"{path.stem} [{entry['product_name']} -> {entry['city']}, {entry['country']}]"
-
-        if pub.get("done") or pub.get("stopped") or pub.get("missed"):
-            continue
-
-        sched = datetime.datetime.fromisoformat(entry["scheduled_utc"])
-        if now < sched:
-            hrs = (sched - now).total_seconds() / 3600
-            print(f"{label}: due {entry['scheduled_local'][:16]} local ({hrs:.0f}h), review={entry['review']}")
-            continue
-
-        if now > sched + datetime.timedelta(hours=GRACE_HOURS):
-            pub["missed"] = True
-            save_entry(path, entry)
-            print(f"🛑 {label}: MISSED its window (review={entry['review']}, "
-                  f"posted so far={[p for p in PLATFORMS if pub[p]]}). Not posting. "
-                  f"To post it anyway, set a new scheduled_utc and missed=false.")
-            continue
-
-        if entry["review"] != "approved":
-            print(f"⏸️  {label}: due now but review={entry['review']}. Waiting for approval "
-                  f"(window closes {GRACE_HOURS:.0f}h after 7 AM local).")
-            continue
-
-        img_path = IMAGES_DIR / (entry["image"] or "")
-        txt_path = CAPTIONS_DIR / (entry["caption"] or "")
-        if not entry["image"] or not img_path.is_file() or not entry["caption"] or not txt_path.is_file():
-            print(f"❌ {label}: approved but image/caption file is missing. Skipping.")
-            continue
-
-        caption, alt_text = extract_caption(txt_path.read_text(encoding="utf-8"))
-        if alt_text:
-            print(f"  ♿ Alt text found ({len(alt_text)} characters): {alt_text[:80]}...")
-        else:
-            print(f"  ⚠️ No 'Alt Text:' section found in {txt_path.name}; posting without alt text.")
-        location_name = f"{entry['city']}, {entry['country']}"
-        pending = [p for p in PLATFORMS if not pub[p]]
-        pub["attempts"] += 1
-        posted_any = True
-        print(f"\n--- Posting {label}. Pending: {pending} (attempt {pub['attempts']}/{MAX_ATTEMPTS}) ---")
-
-        try:
-            public_image_url = upload_to_public_url(img_path)
-            if "facebook" in pending:
-                pub["facebook"] = post_to_facebook(public_image_url, caption)
-            if "instagram_feed" in pending:
-                pub["instagram_feed"] = post_to_instagram_feed(
-                    public_image_url, caption, alt_text, location_id=get_meta_location_id(location_name))
-            if "threads" in pending:
-                pub["threads"] = post_to_threads(
-                    public_image_url, caption, alt_text, location_id=get_threads_location_id(location_name))
-        except Exception as e:
-            print(f"     ❌ Error while posting: {e}")
-
-        if all(pub[p] for p in PLATFORMS):
-            pub["done"] = True
-            pub["posted_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            img_path.unlink(missing_ok=True)
-            txt_path.unlink(missing_ok=True)
-            print(f"     ✅ All platforms succeeded. Deleted {img_path.name} and {txt_path.name}; "
-                  f"{path.name} kept as a record.")
-        elif pub["attempts"] >= MAX_ATTEMPTS:
-            pub["stopped"] = True
-            print(f"     🛑 Still failing on {[p for p in PLATFORMS if not pub[p]]} after {MAX_ATTEMPTS} "
-                  f"attempts. Stopped; files kept for manual review.")
-        else:
-            print(f"     ⏳ Still failing on {[p for p in PLATFORMS if not pub[p]]}; will retry next hour.")
-
-        save_entry(path, entry)
-        time.sleep(15)
+            print(f"⚠️ Skipped {path.name}: {e!r}. Check that file's contents.")
 
     if not posted_any:
         print("\nNothing due to post this hour.")

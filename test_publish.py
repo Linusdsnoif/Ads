@@ -1,74 +1,72 @@
 """
 test_publish.py
 
-Full standalone test for publish_social.py: reads a REAL caption file from
-output_descriptions/ (same as the production pipeline does), parses it with
-the actual extract_post_data() function, then posts to whichever platforms
-you choose — bypassing only the day/timezone schedule-matching logic.
+Manual end-to-end test for publish_social.py: reads a REAL caption file from
+output_descriptions/ (as the production pipeline does), parses and checks it
+with the same code the publisher uses, then posts to whichever platforms you
+choose. It skips only the schedule and review checks.
 
-This exercises everything except the "is it 7am yet" check:
-  - The real image file
-  - The real .txt caption/alt-text/location parsing
-  - The real ImgBB upload
-  - The real Meta location lookup (if the file has a Location Tag)
-  - The real Facebook / Instagram / Threads posting calls
+This exercises everything else:
+  - the real image file
+  - the real caption / alt-text parsing and caption checks (captions.py)
+  - the real Cloudflare R2 upload
+  - the real Meta and Threads location lookups (when a location is known)
+  - the real Facebook / Instagram / Threads posting calls
 
-⚠️ WARNING: This makes REAL, LIVE, PUBLIC posts. There is no sandbox/draft mode
-in the Facebook, Instagram, or Threads Graph APIs. Use content you don't mind
-being briefly public, and plan to manually delete the test posts afterward.
+WARNING: this makes REAL, LIVE, PUBLIC posts. The Facebook, Instagram and
+Threads APIs have no sandbox or draft mode. Use content you don't mind being
+briefly public, and delete the test posts afterwards.
+
+This is a script, not a pytest test (pytest is told to skip it).
 
 Usage
 -----
-    # Auto-finds output_descriptions/modeled_Breathable_Baby_Carrier_1.txt
-    # to match the image, exactly like publish_social.py does:
+    # Finds output_descriptions/modeled_Breathable_Baby_Carrier_1.txt to match
+    # the image, the same way the pipeline names caption files:
     python test_publish.py --image output_models/modeled_Breathable_Baby_Carrier_1.jpg
 
-    # Or point at a specific caption file explicitly:
+    # Point at a specific caption file:
     python test_publish.py --image path/to/photo.jpg --text path/to/caption.txt
 
     # Only test one or two platforms:
     python test_publish.py --image path/to/photo.jpg --platforms facebook threads
 
-    # See the parsed caption/alt-text/location WITHOUT posting anything:
+    # Set the geotag yourself (otherwise taken from the image's schedule file,
+    # then from the caption's "Location Tag:" line):
+    python test_publish.py --image path/to/photo.jpg --location "Miami, USA"
+
+    # Show the parsed caption, alt text, location and checks WITHOUT posting:
     python test_publish.py --image path/to/photo.jpg --dry-run
 """
 
 import argparse
+import json
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-
+from captions import THREADS_MAX_CHARS, caption_problems, extract_caption, post_length
 from publish_social import (
-    extract_post_data,
-    get_timezone_from_location,
-    upload_to_public_url,
+    CAPTIONS_DIR,
+    REQUIRED_ENV,
+    SCHEDULE_DIR,
     get_meta_location_id,
-    get_threads_location_id, 
+    get_threads_location_id,
     post_to_facebook,
     post_to_instagram_feed,
     post_to_threads,
+    upload_to_public_url,
 )
+
+__test__ = False  # keeps pytest from collecting this live-posting script
 
 load_dotenv()
 
-REQUIRED_ENV_VARS = [
-    "META_ACCESS_TOKEN",
-    "FB_PAGE_ID",
-    "IG_USER_ID",
-    "THREADS_ACCESS_TOKEN",
-    "THREADS_USER_ID",
-    "R2_ACCESS_KEY_ID",
-    "R2_SECRET_ACCESS_KEY",
-    "R2_ENDPOINT_URL",
-    "R2_BUCKET_NAME",
-    "R2_PUBLIC_URL",
-]
-
 
 def check_env_vars() -> bool:
-    missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
+    missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
     if missing:
         print("❌ Missing required environment variables (check your .env file):")
         for v in missing:
@@ -78,16 +76,33 @@ def check_env_vars() -> bool:
     return True
 
 
+def find_location(image_path: Path, raw_text: str) -> tuple[str | None, str]:
+    """Return (location, where it came from): the image's schedule file first,
+    then the caption's 'Location Tag:' line."""
+    if SCHEDULE_DIR.is_dir():
+        for path in SCHEDULE_DIR.glob("*.json"):
+            try:
+                entry = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if entry.get("image") == image_path.name and entry.get("city"):
+                return f"{entry['city']}, {entry['country']}", f"schedule file {path.name}"
+    m = re.search(r"^\s*Location\s*Tag\s*:\s*(.+)$", raw_text.replace("**", ""), re.M | re.I)
+    if m:
+        return m.group(1).strip(), "the caption's Location Tag line"
+    return None, "nowhere (posting without a geotag)"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--image", required=True, help="Path to a local image file to test-post.")
     parser.add_argument(
         "--text",
         default=None,
-        help="Path to the matching caption .txt file. If omitted, looks for "
-             "output_descriptions/<image_stem>.txt — the same exact-match lookup "
-             "publish_social.py uses in production.",
+        help="Path to the matching caption .txt file. If omitted, uses "
+             "output_descriptions/<image_stem>.txt, the name the pipeline gives caption files.",
     )
+    parser.add_argument("--location", default=None, help='Geotag to use, e.g. "Miami, USA".')
     parser.add_argument(
         "--platforms",
         nargs="+",
@@ -98,7 +113,7 @@ def main():
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Parse and print the caption/alt-text/location/schedule, but don't upload or post anything.",
+        help="Parse and print the caption, alt text, location and checks, but don't upload or post anything.",
     )
     args = parser.parse_args()
 
@@ -107,31 +122,36 @@ def main():
         print(f"❌ Image not found: {image_path}")
         return
 
-    if args.text:
-        text_path = Path(args.text)
-    else:
-        text_path = Path("output_descriptions") / f"{image_path.stem}.txt"
-
+    text_path = Path(args.text) if args.text else CAPTIONS_DIR / f"{image_path.stem}.txt"
     if not text_path.exists():
         print(f"❌ Caption file not found: {text_path}")
-        print("   Pass --text explicitly if it's not sitting next to output_descriptions/.")
+        print("   Pass --text explicitly if it isn't in output_descriptions/.")
         return
 
     print(f"=== Reading caption file: {text_path} ===")
     raw_text = text_path.read_text(encoding="utf-8")
+    caption, alt_text = extract_caption(raw_text)
 
-    day_of_week, location_name, caption, alt_text = extract_post_data(raw_text)
+    if args.location:
+        location_name, source = args.location, "--location"
+    else:
+        location_name, source = find_location(image_path, raw_text)
 
     print("\n=== Parsed post data ===")
-    print(f"  Schedule day : {day_of_week}")
-    print(f"  Location tag : {location_name}")
-    print(f"  Alt text     : {alt_text}")
+    print(f"  Location     : {location_name or '(none)'}  (from {source})")
+    print(f"  Alt text     : {alt_text or '(none)'}")
+    print(f"  Length       : {post_length(caption)}/{THREADS_MAX_CHARS} characters")
     print(f"  Caption      :\n{caption}\n")
 
-    if location_name != "UTC":
-        print("=== Resolving timezone for location (informational only — not gating this test) ===")
-        tz = get_timezone_from_location(location_name)
-        print(f"  Resolved timezone: {tz}")
+    # The same check the publisher runs before posting.
+    problems = caption_problems(raw_text, require_alt_text=False)
+    if problems:
+        print("❌ The publisher would refuse this caption:")
+        for p in problems:
+            print(f"   - {p}")
+        print("   Fix the caption file before testing.")
+        return
+    print("✅ Caption passes the publisher's checks.")
 
     if args.dry_run:
         print("\n--dry-run set: stopping here, nothing was uploaded or posted.")
@@ -145,13 +165,8 @@ def main():
     try:
         image_url = upload_to_public_url(image_path)
     except Exception as e:
-        print(f"❌ Cloudflare R2 upload failed — check your R2 environment variables. Error: {e}")
+        print(f"❌ Cloudflare R2 upload failed; check your R2 environment variables. Error: {e}")
         return
-
-    location_id = None
-    if location_name != "UTC":
-        print("\n=== Looking up Meta location ===")
-        location_id = get_meta_location_id(location_name)
 
     results = {}
 
@@ -161,14 +176,12 @@ def main():
 
     if "instagram" in args.platforms:
         print("\n=== Testing Instagram Feed ===")
-        results["instagram"] = post_to_instagram_feed(image_url, caption, alt_text, location_id)
+        meta_loc_id = get_meta_location_id(location_name) if location_name else None
+        results["instagram"] = post_to_instagram_feed(image_url, caption, alt_text, meta_loc_id)
 
     if "threads" in args.platforms:
         print("\n=== Testing Threads ===")
-        threads_loc_id = None
-        if location_name != "UTC":
-            threads_loc_id = get_threads_location_id(location_name)
-        
+        threads_loc_id = get_threads_location_id(location_name) if location_name else None
         results["threads"] = post_to_threads(image_url, caption, alt_text, location_id=threads_loc_id)
 
     print("\n" + "=" * 40)
@@ -179,12 +192,9 @@ def main():
 
     if not all(results.values()):
         print("\nCheck the error messages printed above each failed platform for details "
-              "(e.g. invalid token, expired token, wrong Page/User ID, missing permissions).")
+              "(e.g. invalid or expired token, wrong Page/User ID, missing permissions).")
     else:
-        print("\nAll tested platforms succeeded using the REAL caption/alt-text/location. "
-              "Remember to manually delete these test posts from each app.")
-    
-    
+        print("\nAll tested platforms succeeded. Remember to delete these test posts from each app.")
 
 
 if __name__ == "__main__":

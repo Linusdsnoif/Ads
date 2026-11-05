@@ -1,17 +1,25 @@
 """
 generate_product_images.py
 
-Generates AI lifestyle/commercial photos for randomly selected products using
-the Gemini image model, given local reference product photos.
+Generates AI lifestyle/commercial photos for LUFFCABO products using the
+Gemini image model, given local reference product photos.
 
-Produces 4 images per run:
-  - 3 images in a generic, casual setting (using each product's tailored prompt)
-  - 1 image of a baby carrier (one of the carrier products, distinct from the
-    casual picks) styled for an Arabic-region audience. The demonstrator is a
-    Middle Eastern man or woman dressed per Gulf custom for a randomly chosen
-    indoor (private home) or outdoor (public) setting:
-      outdoor: woman in abaya + hijab + niqab (face covered), man in thawb + ghutra/shemagh
-      indoor:  woman in modest dress/abaya + hijab (face visible), man in thawb
+Each weekly batch (generated Friday night, San Diego time) contains:
+  - 3 product posts: Tue (USA), Thu (Europe), Sat (UK/Australia)
+  - 1 product post for Sun (Saudi Arabia / UAE), with a Gulf Arab model in
+    modern everyday clothes (no head covering or traditional dress)
+  - in weeks with the 1st or 3rd Wednesday of the month, 1 parenting-tips
+    infographic on Wed (tips_posts.py), so 2 tips posts a month
+
+Products come from a fair rotation (rotation.py): all 15 shop products,
+variants included, are posted once in a shuffled order before any repeats. A
+product whose reference folder is missing or empty is skipped until it has photos.
+
+Cup holder and baby carrier scenes are randomized on every call by
+cup_holder_prompts.py and carrier_prompts.py.
+
+Every saved image is exactly 1080x1350 px (4:5 portrait). Gemini is asked for a
+4:5 image, and the result is then scaled and center-cropped to the exact size.
 
 Setup
 -----
@@ -26,6 +34,7 @@ Usage
     python generate_product_images.py
     python generate_product_images.py --base-folder "Product images" --output-folder output_models
     python generate_product_images.py --num-casual 3 --seed 42
+    python generate_product_images.py --tips always      # force a tips post this week
 """
 
 from __future__ import annotations
@@ -36,15 +45,24 @@ import json
 import logging
 import os
 import random
+import re
 import sys
-import getpass
 import time
 from io import BytesIO
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from cup_holder_prompts import CUP_HOLDER_PRODUCTS, build_cup_holder_prompt
+from carrier_prompts import CARRIER_PRODUCTS, build_carrier_prompt
+import rotation
+from tips_posts import (
+    TIPS_CLOSING, TIPS_FOLDER, TIPS_TOPICS, build_tips_caption_prompt, build_tips_image_prompt,
+    check_tips_text, describe_check, find_tips_topic,
+)
 
-from PIL import Image
-from google.genai import Client, types
+from PIL import Image, ImageOps
+from google.genai import Client, errors as genai_errors, types
+
+from captions import THREADS_MAX_CHARS, caption_problems
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -62,6 +80,17 @@ log = logging.getLogger("product_image_gen")
 # Static configuration
 # --------------------------------------------------------------------------- #
 MODEL_NAME = "gemini-3.1-flash-image"
+# Model for captions and for reading back the text on tips images. This is set to
+# the image model; if that wasn't intended, put your text model here.
+TEXT_MODEL = "gemini-3.1-flash-image"
+
+# Every saved image is resized to exactly this size (4:5 portrait, the tallest
+# Instagram/Facebook feed format). GEMINI_ASPECT_RATIO must match its shape.
+OUTPUT_SIZE = (1080, 1350)
+GEMINI_ASPECT_RATIO = "4:5"
+# Optional: "2K" asks for a larger source image, so the final resize only
+# shrinks it (slightly sharper). Leave as None unless your model supports it.
+GEMINI_IMAGE_SIZE = None
 
 PRODUCT_LIST = [
     "Automatic Nail Clipper(ENC)",
@@ -75,105 +104,75 @@ PRODUCT_LIST = [
     "Detachable Cup Holder(DCH)",
     "Gray Baby Carrier(GBC)",
     "Gray stroller cup holder(Gtray)",
+    "Green stroller cup holder(GRtray)",
     "Gray Stroller Organizer(GSO)",
     "Inflatable Baby Seat(IBS)",
     "LED Beauty Mask(LBM)",
 ]
 
-# The Arabic-region post only ever uses one of these baby carriers.
-ARABIC_PRODUCT_LIST = [
-    "Breathable Baby Carrier(BBC)",
-    "Breathable Baby CarrierM(BCM)",
-    "Gray Baby Carrier(GBC)",
-]
+# The Sunday (Saudi Arabia / UAE) post takes the next product in the rotation,
+# like every other slot. Carriers and cup holders get a full Gulf scene from their
+# own modules; every other product's prompt gets this note appended.
+ARABIC_REGION_NOTE = (
+    "\n\nREGIONAL STYLING (Saudi Arabia / UAE post): every adult in the image is a Gulf Arab of Saudi or Emirati "
+    "appearance, with uncovered, casually styled hair, in modern everyday clothes (no hijab or other head covering, "
+    "and no traditional dress). This replaces any earlier instruction about the person's ethnicity; everything "
+    "else above stays the same."
+)
+
+# Tips images are regenerated (up to this many tries) when their text doesn't
+# read back exactly as written.
+TIPS_TEXT_ATTEMPTS = 3
 
 COLOR_AGE_PAIRS = [
     {"color": "purple", "age": "an infant between 0 and 12 months old"},
     {"color": "yellow", "age": "a toddler between 1 and 3 years old"},
     {"color": "pink", "age": "a young child between 3 and 6 years old"},
-    {"color": "grey", "age": "a baby for a polishing session"},
+    {"color": "grey", "age": "a baby between 6 and 18 months old, during a gentle polishing session"},
 ]
 
 # Shared closing instructions appended to every prompt, matching the notebook's
 # original fallback/default guidance (kept so every product benefits from it,
 # not just ones missing a custom entry).
 GLOBAL_GUIDANCE = (
-    "Carefully analyze all reference images, and double check the output image to make sure it fits the prompt and product designs."
-    "Ensure the guardians are random ethnicies and faces. No repeat faces from reference images."
+    "Carefully analyze all reference images, and double check the output image to make sure it fits the prompt and product designs. "
+    "Ensure the guardians are random ethnicities and faces. No repeat faces from reference images. "
     "Ensure the interaction between the demonstrator and the products fits logic and physics. "
-    "If the product is a cup holder, do not show the clamp in the image; make sure it's hidden and parallel to the "
-    "side handle, and make sure there is only one stroller in the image."
+    "If the product is a cup holder, do not show the clamp in the image; make sure it's hidden level with the "
+    "ground, and make sure there is only one stroller in the image. "
     "If the product is a Baby Carrier or Inflatable Seat, double check the brand logo LUFFCABO, and the baby must "
     "face outward and look at the camera, and ensure the baby is sitting properly in the product. "
     "If the product is the Automatic Nail Clipper, ensure the device is middle-finger long. "
     "If the product is the Baby Sculpting Device, ensure there are only five white buttons embedded within the black screen. "
     "Please generate the image carefully with details such as sizing and color matching. "
-    "Ensure there is only one guardian in the image at a time, and all body features should stay normal and fit human anatomy. Guardians should only have 2 hands in the frame."
+    "Ensure there is only one guardian in the image at a time, and all body features should stay normal and fit human anatomy. Guardians should only have 2 hands in the frame. "
 )
-
-# Instructions layered on top of a baby carrier's normal prompt to produce the
-# Arabic-region / strict-dress-code variant. One entry from ARABIC_SETTING_RULES
-# (indoor or outdoor) is appended after this to set the scene and dress code.
-ARABIC_DRESS_CODE_OVERRIDE = (
-    "\n\nREGIONAL STYLING OVERRIDE (Arabian Gulf market, strict modest dress code):\n"
-    "Change ONLY the guardian's clothing, ethnicity/styling, and the setting to fit a conservative Gulf Arab "
-    "family — do NOT change the baby carrier's design, color, shape, logo, buckles, or how it is worn as described "
-    "above. This replaces any earlier instruction about the guardian's ethnicity, hairstyle, clothing, or setting.\n"
-    "- The guardian is a single Middle Eastern / Arab woman or man of Arab appearance.\n"
-    "- The baby carrier is worn OVER the guardian's traditional clothing. The carrier, its straps, its buckles, and "
-    "both LUFFCABO logos must stay fully visible and must not be hidden or covered by the abaya, headscarf, face "
-    "veil, or head covering.\n"
-    "- Use lighting and framing so the carrier's edges, straps, and logo stand out clearly against dark clothing.\n"
-    "- Keep the same product interaction, framing, and photorealistic commercial quality described above; this is "
-    "purely a wardrobe- and setting-region change, not a different scene concept.\n"
-)
-
-ARABIC_SETTING_RULES = {
-    "indoor": (
-        "- SETTING: INDOOR, inside a private upscale Gulf Arab family home, such as a majlis with low floor seating, "
-        "a bright family living room, or a home entrance hall. Warm neutral or gold-toned decor, arabesque or "
-        "geometric patterned textiles or wall art, soft warm lighting.\n"
-        "- INDOOR DRESS CODE, if the guardian is a woman: a loose, full-length, long-sleeved modest dress or abaya, "
-        "with a hijab that fully covers her hair and neck. Her face is uncovered and smiling; only her face and "
-        "hands are visible. No form-fitting, short, or sleeveless clothing.\n"
-        "- INDOOR DRESS CODE, if the guardian is a man: a long-sleeved, ankle-length white or softly colored thawb; "
-        "head uncovered or wearing a simple white taqiyah cap.\n"
-    ),
-    "outdoor": (
-        "- SETTING: OUTDOOR, in a public place in the Gulf, such as a waterfront corniche promenade, a landscaped "
-        "city park with palm trees, a traditional open-air souq, or a modern outdoor shopping boulevard. Bright warm "
-        "daylight, sandstone or modern Gulf architecture in the background.\n"
-        "- OUTDOOR DRESS CODE, if the guardian is a woman: a long, loose, full-length black abaya worn over her "
-        "clothes, a black hijab fully covering her hair and neck, and a black niqab covering her face so that only "
-        "her eyes are visible. Her warm, happy expression shows through her eyes. Nothing form-fitting.\n"
-        "- OUTDOOR DRESS CODE, if the guardian is a man: a long-sleeved, ankle-length white thawb with a white ghutra "
-        "or red-and-white checkered shemagh head covering held in place by a black agal cord.\n"
-    ),
-}
 
 # --------------------------------------------------------------------------- #
 # Per-product prompts (unchanged from the notebook, aside from the
-# `{chosen_color}` / `{chosen_age}` templating being resolved once up front)
+# `{chosen_color}` / `{chosen_age}` templating being resolved once up front).
+# Cup holders and baby carriers are not here: their prompts are built fresh on
+# every call by cup_holder_prompts.py and carrier_prompts.py.
 # --------------------------------------------------------------------------- #
 def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
     return {
         "Automatic Nail Clipper": (
-            "Expert lifestyle product photographer, tasked with a photorealistic, natural lifestyle portrait of an adult using an ultra-compact electronic automatic nail care device." 
-            "The device is extremely compact and small. Demonstrator can easily hold it using thumb and index finger." 
-            "Refer carefully to the form factor in the reference images, specifically the integrated, non-protruding circular grooming slot on the top surface." 
-            "The scene features a smiling male or female, aged 20 to 60 of random ethnicities, in a softly lit, warm residential setting, such as a cozy home vanity, a clean natural-light bathroom, or a comfortable bedroom seating area." 
-            "The camera framing captures the person's face, upper body, and both hands in a natural, relaxed posture, with varied hairstyles and casual clothing styles suitable for the setting." 
-            "The demonstrator is holding the tiny device delicately with the person's fingers, demonstrating its use by gently placing the person's opposite fingertip against the smooth styling surface." 
-            "The device has a smooth, contoured, silver-grey and black body with NO protruding lever parts," 
-            "featuring an integrated circular grooming area and clear window on the top face and also two circular grey button at at the center of the device." 
-            "The background features a soft, diffused aesthetic with a shallow depth of field, keeping the focus on the person's interaction and natural smile." 
-            "High-quality photorealistic lighting on the device, smooth skin, and perfectly manicured nails. NO Brand Logo or Brand Text." 
-            "Strictly follow the product design from references."
-            "The demonstrator should only have 2 hands in the frame"
+            "Expert lifestyle product photographer, tasked with a photorealistic, natural lifestyle portrait of an adult using an ultra-compact electronic automatic nail care device. "
+            "The device is extremely compact and small. Demonstrator can easily hold it using thumb and index finger. "
+            "Refer carefully to the form factor in the reference images, specifically the integrated, non-protruding circular grooming slot on the top surface. "
+            "The scene features a smiling male or female, aged 20 to 60 of random ethnicities, in a softly lit, warm residential setting, such as a cozy home vanity, a clean natural-light bathroom, or a comfortable bedroom seating area. "
+            "The camera framing captures the person's face, upper body, and both hands in a natural, relaxed posture, with varied hairstyles and casual clothing styles suitable for the setting. "
+            "The demonstrator is holding the tiny device delicately with the person's fingers, demonstrating its use by gently placing the person's opposite fingertip against the smooth styling surface. "
+            "The device has a smooth, contoured, silver-grey and black body with NO protruding lever parts, "
+            "featuring an integrated circular grooming area and clear window on the top face and also two circular grey buttons at the center of the device. "
+            "The background features a soft, diffused aesthetic with a shallow depth of field, keeping the focus on the person's interaction and natural smile. "
+            "High-quality photorealistic lighting on the device, smooth skin, and perfectly manicured nails. NO Brand Logo or Brand Text. "
+            "Strictly follow the product design from references. "
+            "The demonstrator should only have 2 hands in the frame. "
         ),
         "Baby Nail File": (
             f"""
-            You are an expert product photographer. Create a luxurious, soft-focus lifestyle commercial image of a gentle electric baby nail file being used by a smiling adult guardian on a child aged {chosen_age}'s tiny finger.
+            You are an expert product photographer. Create a luxurious, soft-focus lifestyle commercial image of a gentle electric baby nail file being used by a smiling adult guardian on the tiny finger of {chosen_age}.
             Ensure the Baby nail file is being used on the child's own finger.
             Ensure there are no partial guardian or ghost in the frame. No hands coming out of nowhere.
             There should only be one guardian and one baby in the image. 
@@ -188,7 +187,7 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             """
         ),
         "Baby Sculpting Device": (
-            f"""
+            """
             A professional commercial product photograph in a luxury setting, rendered in ultra-realistic 8k resolution with shallow depth of field and soft ambient indoor lighting in gentle pastel tones.
             The scene is a clean changing station countertop with varying marble patterns, and features a smiling woman, of random ethnicities and ages from young adult to mid-30s, seated at the counter.
 
@@ -212,226 +211,77 @@ def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
             """
         ),
         "Baby Stroller Organizer": (
-            "You are an expert product photographer"
-            "Collect all reference images and analyze them carefully then you shoot generate a"
+            "You are an expert product photographer. "
+            "Collect all reference images and analyze them carefully, then generate a "
             "premium commercial placement shot of a sophisticated, durable black fabric baby stroller organizer attached by only two straps on each side "
             "to the leather-wrapped handle of an expensive urban stroller. The organizer is packed with organized "
-            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio,"
-            "bright daylight, commercial quality, sharp detail focus."
-            "Create a unique image that generate a unique scenario fitting the product"
-            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer"
-            "The demonstrator should be either a woman or man **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s)"
-            "**NO Brand Logo or Brand Text needed on the image**"
-            "**Strictly follow the product design from references**"
-            "**There are no pocket or pouch cup holder on both sides, strictly follow the designs from the reference images**"
-            "The demonstrator should have only 2 hands."
-        ),
-        "Blue Stroller Cup Holder": (
-            "A photorealistic, medium-distance side-profile photograph of a random age (age 20 to 40) and Arabic Regions mom pushing a luxury stroller. Only 1 guardian should be in the frame." 
-            "No other partial guardian should appear." 
-            "Ensure the cup holder is in the frame." 
-            "The gurdianc should be either a man or woman and fully visible in the frame, walking and smiling, with her hands on the stroller handle." 
-            "The stroller has a grey fabric canopy and a silver metal frame." 
-            "Cup holder center should securely attached to the stroller handle frame, parallel to the frame, is the black plastic double-section cup holder and snack tray unit." 
-            "The camera angle captures the side profile of the unit, which is entirely smooth and unbranded on this visible surface, with zero text, zero logos, and zero protruding parts, knobs, or visible clamps;" 
-            "The attachment clamp is completely hidden behind the unit." 
-            "The cup holder holds a baby water bottle and the tray section is filled with the random snacks)." 
-            "Bright daylight illuminates the scene."
-            "Ensure there is only one stroller in the shot"
+            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio, "
+            "bright daylight, commercial quality, sharp detail focus. "
+            "Create a unique image that generate a unique scenario fitting the product. "
+            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer. "
+            "The demonstrator should be either a woman or man **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s). "
+            "**NO Brand Logo or Brand Text needed on the image** "
+            "**Strictly follow the product design from references** "
+            "**There are no pocket or pouch cup holder on both sides, strictly follow the designs from the reference images** "
+            "The demonstrator should have only 2 hands. "
         ),
         "Breast Pumps": (
-            "You are an expert product photographer"
-            "A smiling woman, age 25 to 35 of diverse ethnicities, is seated on a comfortable bed in a peaceful,"
-            "minimalist bedroom with soft morning window daylight. She is wearing a soft grey ribbed tank top with a modern, ergonomic, wireless breast pump discreetly" 
-            "tucked inside the neckline of her top, demonstrating its wearable, hands-free design." 
-            "She has one hand gently resting near the pump with a natural, peaceful expression. Warm neutral tones, photorealistic, 8k resolution, highly detailed."
-            "**NO Brand Logo or Brand Text needed on the image**"
-            "Create a unique image that generate a unique scenario fitting the product"
-            "**Strictly follow the product design from references**"
-            "**Ensure you have the breast pumps placed on top of the breasts with correct position and inside and covered by the tops**"
-            "The breast pumps has a circular black screens on top displaying time with four white buttons featuring different features"
-            "The demonstrator should only have 2 hands"
-        ),
-        "Breathable Baby Carrier": (
-            f"""Product Design (strictly follow this; match the reference images exactly):
-            The entire carrier is solid black. The main body panel, the folded-down head-support
-            panel, the mesh window, the leg openings, the shoulder straps, and the thick waist belt
-            are all black fabric. The only non-black details are the white logos and two small
-            light-gray tabs on the shoulder straps.
-            - Head-support panel: folded down over the top of the front panel, smooth black fabric.
-            - Breathable mesh: one small, horizontal, rounded-rectangle window of BLACK mesh just
-            below the folded head panel. Everything else is smooth black nylon/canvas.
-            - Shoulder straps: padded black straps. Near the top of the front panel, each strap has
-            two round dark snap buttons with silver rims, joined by a short, narrow light-gray tab.
-            - Waist belt: thick black belt with a black zippered storage pouch on the wearer's right hip.
-            Branding: white logo screen-printed directly onto the black fabric, with black fabric
-            visible all around the letters: a small anchor symbol above the word "LUFFCABO".
-            - Logo 1: centered on the front panel just below the mesh window, about the width of the baby's palm.
-            - Logo 2: very small, in the lower corner of the waist-belt pouch.
-            """
-        ),
-        "Breathable Baby CarrierM": (
-            "You are an expert product photographer. Collect all reference images and analyze them carefully." 
-            "Generate a natural-light, heartwarming commercial lifestyle photograph featuring a smiling woman or a man with a range of 25-40 ages, of random ethnicity." 
-            "The image features exactly one guardian and one baby."
-            "**The Baby must face outward and look at directly at the camera**"
-            "The guardian is a smiling woman or man, aged 25-40, of random ethnicity, comfortably wearing an ergonomic baby carrier."
-            "The guardian should do some casual posture that fits the scenario to show the convenience of the product."
-            "The setting should be a random lifestyle scenario where the carrier is naturally needed, such as an outdoor street, supermarket,at a lovely home setting, or a park." 
-            "The camera framing captures her upper body and both hands in a natural, relaxed posture." 
-            "The guardian should have a hairstyle and clothing style suitable for the chosen setting."
-            "The camera framing captures her upper body and her hands, which are positioned naturally and relaxed at the guardian's sides supporting the baby." 
-            "The high-resolution details showcase the intricate mesh material of a specific light grey and white structured ergonomic, premium breathable baby carrier." 
-            "The carrier is in an outward-facing configuration, and the baby, awake and looking at the camera, wears a light-colored onesie. Strictly follow the specific product design seen in the references." 
-            "A single, distinct square brand logo patch is central to the lower part of the carrier, featuring a detailed anchor icon at the top and the text 'LUFFCABO' clearly and correctly displayed below the anchor within the same square border." 
-            "This setting is a place where the Breathable Baby Carrier is needed. This is a single, direct shot."
-            "**Ensure the brand logo text is legibly and correctly displayed as 'LUFFCABO'.**"
-            "The guardian should have only 2 hands."
-            "The baby should have only 2 hands."
-        ),
-        "Detachable Cup Holder": (
-            "A photorealistic, medium-distance side-profile photograph of a smiling woman or man with random age (age 20 to 40) and ethnicites(any color) pushing a luxury stroller with a baby sitting in the stroller." 
-            "Only 1 guardian should be in the frame. No other partial guardian should appear. Ensure the cup holder is in the frame." 
-            "The guardian is fully visible in the frame, walking and smiling, with her hands on the stroller handle." 
-            "The stroller has a grey fabric canopy and a silver metal frame." 
-            "Cup Holder center should securely attached to the stroller handle frame, parallel to the frame, is the black plastic double-section cup holder and snack tray unit." 
-            "The camera angle captures the side profile of the unit, which is entirely smooth and unbranded on this visible surface, with zero text, zero logos, and zero protruding parts, knobs, or visible clamps;" 
-            "the attachment clamp is completely hidden behind the unit. The cup holder holds a baby water bottle and the tray section is filled with the random snacks)." 
-            "Bright daylight illuminates the scene."
-            "Ensure there is only one stroller in the shot"
-            "The guardian should have only 2 hands."
-            "The baby should have only 2 hands."
-        ),
-        "Gray Baby Carrier": (
-            f"""Role & Style: You are an expert commercial product photographer. Generate one single,
-            vibrant, photorealistic lifestyle photograph: one shot, one camera angle.
-            The reference images show the exact product. Copy the carrier from them in every detail, and
-            ignore any circular inset close-ups, labels, arrows, or text in them. The woman in the
-            reference photos is only a product model: the guardian must be a different person with a
-            completely different face.
-
-            Framing: a medium shot from mid-thigh up, with clear space above the guardian's head. The
-            guardian's entire face, from hairline to chin, is fully inside the frame and in sharp focus.
-            The camera is at chest height. The guardian's body is turned about 20 degrees toward the
-            viewer's right, so the guardian's right hip angles slightly toward the camera while the front
-            of the carrier stays clearly visible.
-
-            Subject & Scene: exactly one guardian and one baby. The guardian is a smiling woman or man,
-            aged 25-40, of diverse ethnicity, looking at the camera or down at the baby with a warm
-            expression. The setting is a random everyday scenario where a carrier is useful, such as an
-            outdoor farmers market, a supermarket, home, or a park, with casual hair and clothing to match.
-            The guardian stands or walks in a relaxed posture, hands resting lightly on the baby's legs,
-            never covering the front panel.
-            The baby faces outward, looks directly at the camera with a calm, happy expression, and sits
-            securely on the hip seat. The folded head flap sits just under the baby's chin. The baby's arms
-            come out over the sides of the panel, and the legs hang naturally through the leg openings.
-
-            Product Design (strictly follow this): a hip-seat baby carrier in a soft two-tone gray.
-            - Main body: smooth, matte, warm light taupe-gray canvas (about #B3ACAE). This is the color of
-            the shoulder straps, the front panel, and the hip seat.
-            - Shoulder straps: wide, thick, padded straps covered entirely in the same smooth, solid
-            taupe-gray canvas as the main body, with matching taupe-gray edges. Each strap is one uniform
-            color across its full width and length. On each strap, a round black snap button is joined
-            by a short black elastic loop to a second black snap button fastened at the top corner of
-            the head flap.
-            - Head flap: folded down across the top of the front panel as a wide, rounded, padded roll of
-            smooth cool blue-gray fabric (about #A5A8B5), slightly bluer and darker than the main body.
-            - Mesh window: directly below the flap, a horizontal rounded-rectangle window of very light
-            gray perforated mesh (about #D4D4D8) edged with light gray piping, about two-thirds the
-            width of the front panel.
-            - Front panel: below the mesh window, smooth taupe-gray fabric that narrows to a soft pointed
-            tip between the baby's legs. At each leg opening sits a padded, wing-shaped cushion of dark
-            charcoal 3D mesh (about #6E727C).
-            - Mesh appears in exactly three places: the light gray window below the flap and the two
-            charcoal leg cushions. Every other surface of the carrier is smooth, solid canvas.
-            - Hip seat: a tall, firm, padded taupe-gray waist belt, about as tall as a hand is long, worn
-            around the guardian's waist directly under the baby. The center front of the hip seat,
-            directly below the baby, is plain, smooth taupe-gray fabric.
-            - Storage pouch: a taupe-gray zippered pouch built into the hip seat on the guardian's right
-            hip, directly below the guardian's right elbow (on the viewer's left side of the image). It
-            sits on the side of the waist, well away from the center, with its zipper running
-            horizontally along its top edge.
-            - Dark accents: the charcoal leg cushions, black snap buttons and elastic loops, and dark
-            charcoal (about #3A3A3C) webbing adjusters and buckles.
-
-            Branding: the logo is a small anchor symbol directly above the word "LUFFCABO", printed in
-            muted slate blue-gray directly onto the taupe fabric, with the fabric visible all around it.
-            - Logo 1: centered on the front panel just below the mesh window, about the size of the
-            baby's palm.
-            - Logo 2: very small, in the lower front corner of the side storage pouch.
-            Spell "LUFFCABO" exactly.
-
-            Anatomy: the guardian has exactly two arms and two hands. The baby has exactly two arms,
-            two hands, two legs, and two feet.
-
-            Final check before output:
-            1. The shoulder straps are solid smooth taupe-gray from edge to edge.
-            2. The storage pouch is on the guardian's right hip, on the side of the waist, and the center
-            front of the hip seat is plain.
-            3. The guardian's whole face is visible in the frame.
-            4. "LUFFCABO" is spelled correctly.
-            """
-        ),
-        "Gray stroller cup holder": (
-            "A photorealistic, medium-distance side-profile photograph of a smiling man or woman random age (age 20 to 40) and ethnicites(any color) pushing a luxury stroller with a baby sitting inside the stroller." 
-            "Only 1 guardian should be fully visible in the frame. No other partial guardian should appear." 
-            "Ensure the cup holder is in the frame." 
-            "The guardian is partially visible, walking and smiling, with the person's hands on the stroller handle." 
-            "The stroller has a grey fabric canopy and a silver metal frame." 
-            "Cup Holder center should securely attached to the stroller handle frame, parallel to the frame, is the black plastic double-section cup holder and snack tray unit." 
-            "The camera angle captures the side profile of the unit, which is entirely smooth and unbranded on this visible surface, with zero text, zero logos, and zero protruding parts, knobs, or visible clamps;" 
-            "the attachment clamp is completely hidden behind the unit. The cup holder holds a baby water bottle and the tray section is filled with the random snacks)." 
-            "Bright daylight illuminates the scene."
-            "Ensure there is only one stroller in the shot"
-            "The guardian should have only 2 hands."
-            "The baby should have only 2 hands."
+            "You are an expert product photographer. "
+            "A smiling woman, age 25 to 35 of diverse ethnicities, is seated on a comfortable bed in a peaceful, "
+            "minimalist bedroom with soft morning window daylight. She is wearing a soft grey ribbed tank top with a modern, ergonomic, wireless breast pump discreetly "
+            "tucked inside the neckline of her top, demonstrating its wearable, hands-free design. "
+            "She has one hand gently resting near the pump with a natural, peaceful expression. Warm neutral tones, photorealistic, 8k resolution, highly detailed. "
+            "**NO Brand Logo or Brand Text needed on the image** "
+            "Create a unique image that generate a unique scenario fitting the product. "
+            "**Strictly follow the product design from references** "
+            "**Ensure you have the breast pumps placed on top of the breasts with correct position and inside and covered by the tops** "
+            "The breast pumps has a circular black screens on top displaying time with four white buttons featuring different features. "
+            "The demonstrator should only have 2 hands. "
         ),
         "Gray Stroller Organizer": (
-            "You are an expert product photographer"
-            "Collect all reference images and analyze them carefully then you shoot generate a"
+            "You are an expert product photographer. "
+            "Collect all reference images and analyze them carefully, then generate a "
             "premium commercial placement shot of a sophisticated, durable fabric baby stroller organizer attached "
             "to the leather-wrapped handle of an expensive urban stroller. The organizer is packed with organized "
-            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio,"
-            "bright daylight, commercial quality, sharp detail focus."
-            "Create a unique image that generate a unique scenario fitting the product"
-            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer"
-            "The demonstrator should be a smiling man or woman **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s)"
-            "**NO Brand Logo or Brand Text needed on the image**"
-            "**Strictly follow the product design from references**"
-            "There are no cup holder on sides, strictly follow the designs from the reference images"
-            "The demonstrator should have only 2 hands."
+            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio, "
+            "bright daylight, commercial quality, sharp detail focus. "
+            "Create a unique image that generate a unique scenario fitting the product. "
+            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer. "
+            "The demonstrator should be a smiling man or woman **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s). "
+            "**NO Brand Logo or Brand Text needed on the image** "
+            "**Strictly follow the product design from references** "
+            "There are no cup holder on sides, strictly follow the designs from the reference images. "
+            "The demonstrator should have only 2 hands. "
         ),
         "Inflatable Baby Seat": (
-            "You are an expert product photographer"
-            "Collect all reference images and analyze them carefully then you shoot generate"
+            "You are an expert product photographer. "
+            "Collect all reference images and analyze them carefully, then generate "
             "a warm, inviting commercial lifestyle shot of an inflatable baby seat resting safely on a soft living room rug. "
-            "Natural ambient sunlight, cheerful modern home interior, crisp textures, sharp focus, 8k resolution." 
-            "The primary logo on the inflatable seat must be rendered clearly and visible."
-            "Nice to have baby playfully sitting on it and behaving some random happy faces or emotions and possibly holding some toys"
-            "The logo LUFFCABO with an anchor on top is needed to be shown on the product in the black color"
-            "**The Brand logo must be clearly seen, LUFFCABO and an anchor on top need to be clearly seen**"
-            "Please create a high resolution image and make sure"
-            "Create the image at place where the Breathable Baby Carrier is needed"
-            "Create a unique image that generate a unique scenario fitting the product"
-            "Strictly follow the product design from references"
-            "Ensure the gurdian does not goes through the inflatable baby seat, has the guardian around the baby"
-            "Double check the logo text LUFFCABO"
-            "The guardian should have only 2 hands."
-            "The baby should have only 2 hands."
+            "Natural ambient sunlight, cheerful modern home interior, crisp textures, sharp focus, 8k resolution. "
+            "The primary logo on the inflatable seat must be rendered clearly and visible. "
+            "Nice to have baby playfully sitting on it and behaving some random happy faces or emotions and possibly holding some toys. "
+            "The logo LUFFCABO with an anchor on top is needed to be shown on the product in the black color. "
+            "**The Brand logo must be clearly seen, LUFFCABO and an anchor on top need to be clearly seen** "
+            "Create a unique image that generate a unique scenario fitting the product. "
+            "Strictly follow the product design from references. "
+            "Ensure the guardian does not pass through the inflatable baby seat; the guardian stays around the baby. "
+            "Double check the logo text LUFFCABO. "
+            "The guardian should have only 2 hands. "
+            "The baby should have only 2 hands. "
         ),
         "LED Beauty Mask": (
-            "You are an expert product photographer"
-            "Collect all reference images and analyze them carefully then you shoot generate a"
+            "You are an expert product photographer. "
+            "Collect all reference images and analyze them carefully, then generate a "
             "luxury cosmetic product commercial photograph featuring a sleek, multi-layered LED beauty mask. The mask is "
             "displayed on a polished marble vanity top in a high-end modern bathroom. Soft, diffuse light, close-up details "
-            "on the LED arrays within the material, photorealistic, 8k."
-            "The output image should purely just an LED mask put on the demonstrator face without any effect"
-            "Have a women **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-40s) holding it or putting on their face is the best"
-            "**NO Brand Logo or Brand Text needed on the image**"
-            "Create a unique image that generate a unique scenario fitting the product"
-            "Strictly follow the product design from references"
-            "There should only have one woman in the frame"
-            "The demonstrator should have only 2 hands."
+            "on the LED arrays within the material, photorealistic, 8k. "
+            "The output image should purely just an LED mask put on the demonstrator face without any effect. "
+            "Have a women **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-40s) holding it or putting on their face is the best. "
+            "**NO Brand Logo or Brand Text needed on the image** "
+            "Create a unique image that generate a unique scenario fitting the product. "
+            "Strictly follow the product design from references. "
+            "There should only have one woman in the frame. "
+            "The demonstrator should have only 2 hands. "
         ),
     }
 
@@ -461,13 +311,30 @@ def load_reference_images(product_dir: Path) -> list[Image.Image]:
     return images
 
 
-def resolve_prompt(product_name: str, custom_prompts: dict[str, str]) -> str:
+def resolve_prompt(product_name: str, custom_prompts: dict[str, str], arabic_variant: bool = False) -> str:
     """Get the tailored prompt for a product, falling back to a generic one."""
     base_key = clean_key(product_name)
-    return custom_prompts.get(
+    # Cup holders and carriers build a fresh random scene on every call.
+    if base_key in CUP_HOLDER_PRODUCTS:
+        return build_cup_holder_prompt(base_key, arabic=arabic_variant)
+    if base_key in CARRIER_PRODUCTS:
+        return build_carrier_prompt(base_key, arabic=arabic_variant)
+    prompt = custom_prompts.get(
         base_key,
         f"Professional commercial advertising photography of a parent using a {base_key}. {GLOBAL_GUIDANCE}",
     )
+    return prompt + ARABIC_REGION_NOTE if arabic_variant else prompt
+
+
+def fit_to_output_size(img: Image.Image, size: tuple[int, int] = OUTPUT_SIZE) -> Image.Image:
+    """Scale an image to cover `size`, then center-crop it to exactly `size`."""
+    w, h = img.size
+    target_ratio = size[0] / size[1]
+    # Gemini's "4:5" is not always exact (e.g. 896x1152), so only warn when it is clearly off.
+    if abs((w / h) - target_ratio) / target_ratio > 0.05:
+        log.warning("Image is %dx%d, not %s; center-cropping to %dx%d, so its edges are trimmed.",
+                    w, h, GEMINI_ASPECT_RATIO, *size)
+    return ImageOps.fit(img.convert("RGB"), size, method=Image.Resampling.LANCZOS)
 
 
 def next_output_index(output_folder: Path, clean_name: str) -> int:
@@ -488,16 +355,21 @@ def generate_image(
     ref_images: list[Image.Image],
     prompt_text: str,
     max_retries: int = 10,
+    closing: str | None = None,
 ) -> Image.Image | None:
-    """Call the Gemini image model with retries; return a PIL image or None."""
-    contents = ref_images + [
-        f"{prompt_text} Use the provided reference images to understand the exact product "
-        "(shape, color, logo, material) and generate ONE single best-quality, 8k resolution, and most polished "
-        "commercial lifestyle photograph of it. Do not generate multiple images — return only one. "
-        "There will be no human check after you finish generating, so make sure you always generate the best "
-        "quality that fits the description. Please generate the image carefully with details such as sizing and "
-        "color matching."
-    ]
+    """Call the Gemini image model with retries; return a PIL image or None.
+    `closing` replaces the default product-photo instructions added after the prompt."""
+    if closing is None:
+        closing = (
+            "Use the provided reference images to understand the exact product "
+            "(shape, color, logo, material) and generate ONE single best-quality, 8k resolution, and most polished "
+            "commercial lifestyle photograph of it. Do not generate multiple images — return only one. "
+            "There will be no human check after you finish generating, so make sure you always generate the best "
+            "quality that fits the description. Please generate the image carefully with details such as sizing and "
+            "color matching. Compose it as a vertical 4:5 portrait photograph, keeping the product, the people's "
+            "faces and their hands comfortably inside the frame, away from the edges."
+        )
+    contents = ref_images + [f"{prompt_text} {closing}"]
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -507,6 +379,10 @@ def generate_image(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     response_modalities=["TEXT", "IMAGE"],
+                    image_config=types.ImageConfig(
+                        aspect_ratio=GEMINI_ASPECT_RATIO,
+                        image_size=GEMINI_IMAGE_SIZE,
+                    ),
                     temperature=0.50,
                     top_p=0.95,
                     safety_settings=[
@@ -561,7 +437,7 @@ def process_product(
     log.info(
         "Processing: %s%s",
         product_name,
-        "  [ARABIC / MODEST DRESS VARIANT]" if arabic_variant else "  [casual variant]",
+        "  [ARABIC / GULF VARIANT]" if arabic_variant else "  [casual variant]",
     )
 
     ref_images = load_reference_images(product_dir)
@@ -570,11 +446,7 @@ def process_product(
         return None
     log.info("Loaded %d reference image(s).", len(ref_images))
 
-    prompt_text = resolve_prompt(product_name, custom_prompts)
-    if arabic_variant:
-        arabic_setting = random.choice(list(ARABIC_SETTING_RULES))
-        log.info("Arabic setting: %s (dress code follows the setting)", arabic_setting)
-        prompt_text += ARABIC_DRESS_CODE_OVERRIDE + ARABIC_SETTING_RULES[arabic_setting]
+    prompt_text = resolve_prompt(product_name, custom_prompts, arabic_variant=arabic_variant)
 
     generated_image = generate_image(client, ref_images, prompt_text, max_retries=max_retries)
     if generated_image is None:
@@ -589,9 +461,61 @@ def process_product(
     index = next_output_index(output_folder, clean_name)
     output_path = output_folder / f"modeled_{clean_name}_{index}.jpg"
 
-    generated_image.convert("RGB").save(output_path, "JPEG")
+    fit_to_output_size(generated_image).save(output_path, "JPEG", quality=95, optimize=True)
     log.info("Saved: %s\n", output_path)
     return output_path
+
+
+def process_tips(
+    client: Client,
+    base_folder: Path,
+    output_folder: Path,
+    topic: dict,
+    max_retries: int = 10,
+) -> tuple[Path | None, str]:
+    """Generate and save one parenting-tips infographic.
+
+    Returns (output path or None, text-check result). Each image's text is read back
+    and compared with the topic; up to TIPS_TEXT_ATTEMPTS images are made until one
+    matches exactly, and the closest one is kept.
+    """
+    log.info("=" * 60)
+    log.info("Processing: Parenting Tips: %s  [tips post]", topic["title"])
+
+    ref_images = load_reference_images(base_folder / TIPS_FOLDER)
+    if ref_images:
+        log.info("Loaded %d style reference image(s).", len(ref_images))
+    else:
+        log.info("No style reference in %s; using the text description of the style only.", base_folder / TIPS_FOLDER)
+    prompt_text = build_tips_image_prompt(topic, has_style_reference=bool(ref_images))
+
+    best_image, best_check, best_errors = None, None, None
+    for attempt in range(1, TIPS_TEXT_ATTEMPTS + 1):
+        image = generate_image(client, ref_images, prompt_text, max_retries=max_retries, closing=TIPS_CLOSING)
+        if image is None:
+            break
+        image = fit_to_output_size(image)
+        check = check_tips_text(client, TEXT_MODEL, image, topic)
+        errors = None if check is None else len(check["missing"]) + len(check["unexpected"])
+        log.info("Tips text check (image %d/%d): %s", attempt, TIPS_TEXT_ATTEMPTS, describe_check(check))
+        if best_image is None or (errors is not None and (best_errors is None or errors < best_errors)):
+            best_image, best_check, best_errors = image, check, errors
+        if errors is None or errors == 0:
+            break
+
+    if best_image is None:
+        log.error("Failed to generate the tips image for %s.\n", topic["title"])
+        return None, "image failed"
+
+    clean_name = "Parenting_Tips_" + re.sub(r"[^A-Za-z0-9]+", "_", topic["title"]).strip("_")
+    output_folder.mkdir(parents=True, exist_ok=True)
+    output_path = output_folder / f"modeled_{clean_name}_{next_output_index(output_folder, clean_name)}.jpg"
+    best_image.save(output_path, "JPEG", quality=95, optimize=True)
+    result = describe_check(best_check)
+    if result != "passed":
+        log.warning("⚠️ Tips text check %s. Check the spelling carefully before approving.", result)
+    log.info("Saved: %s\n", output_path)
+    return output_path, result
 
 
 # --------------------------------------------------------------------------- #
@@ -609,6 +533,7 @@ PRODUCT_LINKS = {
     "Detachable Cup Holder": "https://luffcabo.com/products/detachable-stroller-cup-holder",
     "Gray Baby Carrier": "https://luffcabo.com/products/all-season-baby-carrier?variant=41562902167648",
     "Gray stroller cup holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
+    "Green stroller cup holder": "https://luffcabo.com/products/universal-stroller-cup-holder",
     "Gray Stroller Organizer": "https://luffcabo.com/products/durable-stroller-organizer",
     "Inflatable Baby Seat": "https://luffcabo.com/products/inflatable-baby-seat",
     "LED Beauty Mask": "https://luffcabo.com/products/led-beauty-mask",
@@ -641,6 +566,12 @@ SLOTS = {
     "tue": {"day": "Tuesday", "day_offset": 2, "options": [
         {"country": "USA", "cities": ["Los Angeles", "Seattle", "New York", "Chicago", "Miami", "San Francisco", "Austin", "Denver"], "language": "English"},
     ]},
+    # Parenting tips (English), only in weeks with the 1st or 3rd Wednesday of the month.
+    "wed": {"day": "Wednesday", "day_offset": 3, "options": [
+        {"country": "USA", "cities": ["Los Angeles", "Seattle", "New York", "Chicago", "Miami", "San Francisco", "Austin", "Denver"], "language": "English"},
+        {"country": "UK", "cities": ["London", "Manchester", "Edinburgh", "Birmingham", "Bristol"], "language": "English"},
+        {"country": "Australia", "cities": ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"], "language": "English"},
+    ]},
     "thu": {"day": "Thursday", "day_offset": 4, "options": [
         {"country": "France", "cities": ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Bordeaux"], "language": "French"},
         {"country": "Germany", "cities": ["Berlin", "Munich", "Frankfurt", "Hamburg", "Cologne", "Stuttgart"], "language": "German"},
@@ -656,6 +587,7 @@ SLOTS = {
 }
 CASUAL_SLOT_ORDER = ["tue", "sat", "thu"]  # same mapping as before: casual #1 -> Tue, #2 -> Sat, #3 -> Thu
 ARABIC_SLOT = "sun"
+TIPS_SLOT = "wed"
 
 # Fixed timezone per city (no geocoding at publish time, so no guessing).
 CITY_TZ = {
@@ -761,9 +693,16 @@ def generate_caption(
     base_clean_key: str,
     product_link: str,
     output_folder: Path = CAPTION_DIR,
-    max_manual_retries: int = 3,
+    max_manual_retries: int = 4,
+    text_prompt_override: str | None = None,
 ) -> Path | None:
-    """Write `{img_path.stem}.txt` for one image with an explicit target. Returns the path or None."""
+    """Write `{img_path.stem}.txt` for one image with an explicit target. Returns the path or None.
+    `text_prompt_override` replaces the product caption prompt (tips posts use their own).
+
+    Each caption is checked before it is saved (labels present, product link included,
+    short enough for Threads); one that fails is regenerated, with the reason passed
+    back to Gemini. If none passes, nothing is saved and None is returned, so the slot
+    shows "caption failed" in the review summary instead of posting broken text."""
     city, country, lang, day = target["city"], target["country"], target["language"], target["day"]
     output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -798,7 +737,7 @@ def generate_caption(
           - # [1 Core keyword in {lang}]
           - # [1 Broader lifestyle/product keyword in {lang}]
           - # [1 Broader lifestyle/product keyword in {lang}]
-       e) Length: The ENTIRE caption must be strictly under 500 characters.
+       e) Length: The ENTIRE caption, hashtags included, must be strictly under 450 characters.
 
     2. Alt Text Creation:
        a) Write a concise, descriptive sentence for the alt text field in {lang}.
@@ -826,25 +765,49 @@ def generate_caption(
     [Your alt text here]
     """
 
+    if text_prompt_override:
+        text_prompt = text_prompt_override
+
+    retry_note = ""
     for attempt in range(1, max_manual_retries + 1):
+        log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
         try:
-            log.info(f"  - Requesting text via Gemini (Attempt {attempt}/{max_manual_retries})...")
             response = client.models.generate_content(
-                model="gemini-3.1-flash-image",
-                contents=[text_prompt, img],
+                model=TEXT_MODEL,
+                contents=[text_prompt + retry_note, img],
             )
+            caption_text = response.text
+            problems = caption_problems(caption_text, product_link)
+        except Exception as e:
+            caption_text, problems = None, [f"the request failed: {e}"]
+
+        if not problems:
             txt_output_path = output_folder / f"{img_path.stem}.txt"
-            with open(txt_output_path, "w", encoding="utf-8") as f:
-                f.write(response.text)
+            txt_output_path.write_text(caption_text, encoding="utf-8")
             log.info(f"  - Saved caption to: {txt_output_path}")
             return txt_output_path
-        except Exception as e:
-            log.warning(f"  ⚠️ Attempt {attempt} failed: {e}")
-            if attempt < max_manual_retries:
-                time.sleep(attempt * 5)
-            else:
-                log.error(f"  ❌ All manual retry attempts exhausted for {img_path.name}.")
+
+        log.warning(f"  ⚠️ Attempt {attempt} not usable: {'; '.join(problems)}")
+        if caption_text:
+            retry_note = (
+                "\n\nIMPORTANT: your previous answer was rejected because "
+                + "; ".join(problems)
+                + f". Fix this. Keep the whole caption well under {THREADS_MAX_CHARS} characters, "
+                "and follow the output format exactly."
+            )
+        if attempt < max_manual_retries:
+            time.sleep(attempt * 5)
+
+    log.error(f"  ❌ No usable caption for {img_path.name} after {max_manual_retries} attempts. "
+              "Regenerate it with --caption-only.")
     return None
+
+
+def generate_tips_caption(img_path: Path, client: Client, target: dict, topic: dict) -> Path | None:
+    """Caption + alt text for a parenting-tips post, linking to the topic's related product."""
+    link = product_link_for(topic["product"])
+    return generate_caption(img_path, client, target, topic["title"], link,
+                            text_prompt_override=build_tips_caption_prompt(topic, target, link))
 
 
 def write_step_summary(batch_id: str, entries: list[dict]) -> None:
@@ -861,6 +824,8 @@ def write_step_summary(batch_id: str, entries: list[dict]) -> None:
     for e in entries:
         ok = e["image"] and e["caption"]
         status = "awaiting review" if ok else ("caption failed" if e["image"] else "image failed")
+        if e.get("post_type") == "tips" and e["image"] and e.get("text_check", "passed") != "passed":
+            status += f" ⚠️ text check {e['text_check']}"
         lines.append(
             f"| `{e['slot']}` | {e['product_name']}{' (Arabic)' if e['arabic_variant'] else ''} | "
             f"{e['city']}, {e['country']} | {e['scheduled_local'][:16].replace('T', ' ')} | "
@@ -878,12 +843,64 @@ def write_step_summary(batch_id: str, entries: list[dict]) -> None:
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
+def available_products(base_folder: Path) -> list[str]:
+    """Products with reference photos. The rest stay out of the rotation until they have some."""
+    ready = []
+    for product in PRODUCT_LIST:
+        folder = base_folder / product
+        if folder.is_dir() and any(f.suffix.lower() in (".png", ".jpg", ".jpeg") for f in folder.iterdir()):
+            ready.append(product)
+        else:
+            log.warning("No reference photos in '%s'; %s is left out of the rotation until it has some.",
+                        folder, product)
+    return ready
+
+
+def recent_products_from_schedule() -> list[str]:
+    """Products from earlier schedule files, oldest first. Seeds the rotation on its first run."""
+    rows = []
+    for path in SCHEDULE_DIR.glob("*.json"):
+        try:
+            entry = load_schedule(path)
+        except Exception:
+            continue
+        if entry.get("post_type") != "tips" and entry.get("product_name") in PRODUCT_LIST:
+            rows.append((entry.get("scheduled_utc", ""), entry["product_name"]))
+    return [name for _, name in sorted(rows)]
+
+
+def tips_due(anchor: datetime.date, mode: str = "auto") -> bool:
+    """Tips go out on the 1st and 3rd Wednesday of each month, which makes exactly 2 a month."""
+    if mode != "auto":
+        return mode == "always"
+    wednesday = anchor + datetime.timedelta(days=SLOTS[TIPS_SLOT]["day_offset"])
+    return wednesday.day <= 7 or 15 <= wednesday.day <= 21
+
+
+def check_models(client: Client) -> bool:
+    """Stop early if a model name doesn't exist, instead of spending every retry on a 404.
+    Any other error only warns, so a network blip can't cancel the week's batch."""
+    for name in sorted({MODEL_NAME, TEXT_MODEL}):
+        try:
+            client.models.get(model=name)
+        except genai_errors.APIError as e:
+            if e.code == 404:
+                log.error("Gemini model '%s' was not found (404). Fix MODEL_NAME / TEXT_MODEL.", name)
+                return False
+            log.warning("Could not check Gemini model '%s': %s", name, e)
+        except Exception as e:
+            log.warning("Could not check Gemini model '%s': %s", name, e)
+    return True
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base-folder", default="Product images", help="Folder containing per-product reference image subfolders.")
     parser.add_argument("--output-folder", default="output_models", help="Folder to save generated images into.")
     parser.add_argument("--num-casual", type=int, default=3, help="How many casual-setting products/images to generate (max 3).")
-    parser.add_argument("--no-arabic", action="store_true", help="Skip the 4th, Arabic/modest-dress image.")
+    parser.add_argument("--no-arabic", action="store_true", help="Skip the Sunday Saudi/UAE post.")
+    parser.add_argument("--tips", choices=["auto", "always", "never"], default="auto",
+                        help="Parenting-tips post: auto = 1st and 3rd Wednesday of the month only.")
     parser.add_argument("--max-retries", type=int, default=10, help="Max retries per image generation call.")
     parser.add_argument("--cooldown", type=float, default=8.0, help="Seconds to sleep between products.")
     parser.add_argument("--seed", type=int, default=None, help="Random seed, for reproducible product selection.")
@@ -906,6 +923,8 @@ def main() -> int:
         log.error("No API key provided. Set GOOGLE_API_KEY.")
         return 1
     client = Client(api_key=api_key)
+    if not check_models(client):
+        return 1
 
     base_folder = Path(args.base_folder)
     output_folder = Path(args.output_folder)
@@ -924,17 +943,33 @@ def main() -> int:
         )
         return 1
 
-    # The Arabic post is always one of the baby carriers; the casual picks come
-    # from the rest of the list so the 4th product stays distinct.
-    arabic_product = None if args.no_arabic else random.choice(ARABIC_PRODUCT_LIST)
-    casual_pool = [p for p in PRODUCT_LIST if p != arabic_product]
-    casual_products = random.sample(casual_pool, args.num_casual)
+    # Products come from a fair rotation: each product is posted once, in a shuffled
+    # order, before any product repeats. The Sunday Saudi/UAE post takes the next
+    # product too. The rotation is saved before generating, so a re-run of the same
+    # week (--force) reuses the same picks.
+    state = rotation.load_state()
+    rotation.seed_recent(state, "products", recent_products_from_schedule())
+    n_products = args.num_casual + (0 if args.no_arabic else 1)
+    picks = rotation.take(state, "products", available_products(base_folder), n_products, batch_id)
+    casual_products = picks[:args.num_casual]
+    arabic_product = None if args.no_arabic else picks[-1]
 
-    # Each product gets its slot (day + region) BEFORE generation, so a failed
+    tips_topic = None
+    if tips_due(anchor, args.tips):
+        title = rotation.take(state, "tips", [t["title"] for t in TIPS_TOPICS], 1, batch_id)[0]
+        tips_topic = find_tips_topic(title)
+    rotation.save_state(state)
+    queue = state["products"]
+    log.info("Rotation cycle %d: this week %s; %d product(s) left before the cycle repeats.",
+             queue["cycle"], [clean_key(p) for p in picks], len(queue["remaining"]))
+
+    # Each post gets its slot (day + region) BEFORE generation, so a failed
     # image still has a known slot that can be regenerated with the same target.
     assignments = [(p, False, CASUAL_SLOT_ORDER[i]) for i, p in enumerate(casual_products)]
     if arabic_product:
         assignments.append((arabic_product, True, ARABIC_SLOT))
+    if tips_topic:
+        assignments.append((f"Parenting Tips: {tips_topic['title']}", False, TIPS_SLOT))
 
     color_age = random.choice(COLOR_AGE_PAIRS)
     custom_prompts = build_custom_prompts(color_age["color"], color_age["age"])
@@ -953,16 +988,24 @@ def main() -> int:
         if hours_left < MIN_REVIEW_HOURS:
             log.warning("⚠️ Only %.1fh of review time before slot %s posts.", hours_left, slot_key)
 
-        img_path = process_product(
-            client, base_folder, output_folder, product_name, custom_prompts,
-            arabic_variant=arabic, max_retries=args.max_retries,
-        )
+        if slot_key == TIPS_SLOT:
+            entry["post_type"] = "tips"
+            entry["tips_topic"] = tips_topic["title"]
+            img_path, entry["text_check"] = process_tips(
+                client, base_folder, output_folder, tips_topic, max_retries=args.max_retries)
+            txt_path = generate_tips_caption(img_path, client, target, tips_topic) if img_path else None
+        else:
+            img_path = process_product(
+                client, base_folder, output_folder, product_name, custom_prompts,
+                arabic_variant=arabic, max_retries=args.max_retries,
+            )
+            base_key = clean_key(product_name)
+            txt_path = (generate_caption(img_path, client, target, base_key, product_link_for(base_key))
+                        if img_path else None)
         if img_path:
             entry["image"] = img_path.name
-            base_key = clean_key(product_name)
-            txt_path = generate_caption(img_path, client, target, base_key, product_link_for(base_key))
-            if txt_path:
-                entry["caption"] = txt_path.name
+        if txt_path:
+            entry["caption"] = txt_path.name
 
         save_schedule(entry)
         entries.append(entry)
