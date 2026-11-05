@@ -15,8 +15,10 @@ Products come from a fair rotation (rotation.py): all 15 shop products,
 variants included, are posted once in a shuffled order before any repeats. A
 product whose reference folder is missing or empty is skipped until it has photos.
 
-Cup holder and baby carrier scenes are randomized on every call by
-cup_holder_prompts.py and carrier_prompts.py.
+Every product's scene is randomized on every call by its own prompt module:
+cup_holder_prompts.py, carrier_prompts.py, organizer_prompts.py and
+product_scenes.py (nail clipper, nail file, sculpting device, breast pump,
+inflatable seat, LED mask).
 
 Every saved image is exactly 1080x1350 px (4:5 portrait). Gemini is asked for a
 4:5 image, and the result is then scaled and center-cropped to the exact size.
@@ -53,6 +55,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from cup_holder_prompts import CUP_HOLDER_PRODUCTS, build_cup_holder_prompt
 from carrier_prompts import CARRIER_PRODUCTS, build_carrier_prompt
+from organizer_prompts import ORGANIZER_PRODUCTS, build_organizer_prompt
+from product_scenes import SCENE_PRODUCTS, build_scene_prompt
 import rotation
 from tips_posts import (
     TIPS_CLOSING, TIPS_FOLDER, TIPS_TOPICS, build_tips_caption_prompt, build_tips_image_prompt,
@@ -111,8 +115,8 @@ PRODUCT_LIST = [
 ]
 
 # The Sunday (Saudi Arabia / UAE) post takes the next product in the rotation,
-# like every other slot. Carriers and cup holders get a full Gulf scene from their
-# own modules; every other product's prompt gets this note appended.
+# like every other slot. Products with a prompt module get a full Gulf scene from
+# it; this note is only appended to the generic fallback prompt.
 ARABIC_REGION_NOTE = (
     "\n\nREGIONAL STYLING (Saudi Arabia / UAE post): every adult in the image is a Gulf Arab of Saudi or Emirati "
     "appearance, with uncovered, casually styled hair, in modern everyday clothes (no hijab or other head covering, "
@@ -124,6 +128,8 @@ ARABIC_REGION_NOTE = (
 # read back exactly as written.
 TIPS_TEXT_ATTEMPTS = 3
 
+# No longer used here (product_scenes.py picks the nail file's color and age itself).
+# Kept in case another script imports it.
 COLOR_AGE_PAIRS = [
     {"color": "purple", "age": "an infant between 0 and 12 months old"},
     {"color": "yellow", "age": "a toddler between 1 and 3 years old"},
@@ -147,143 +153,6 @@ GLOBAL_GUIDANCE = (
     "Please generate the image carefully with details such as sizing and color matching. "
     "Ensure there is only one guardian in the image at a time, and all body features should stay normal and fit human anatomy. Guardians should only have 2 hands in the frame. "
 )
-
-# --------------------------------------------------------------------------- #
-# Per-product prompts (unchanged from the notebook, aside from the
-# `{chosen_color}` / `{chosen_age}` templating being resolved once up front).
-# Cup holders and baby carriers are not here: their prompts are built fresh on
-# every call by cup_holder_prompts.py and carrier_prompts.py.
-# --------------------------------------------------------------------------- #
-def build_custom_prompts(chosen_color: str, chosen_age: str) -> dict[str, str]:
-    return {
-        "Automatic Nail Clipper": (
-            "Expert lifestyle product photographer, tasked with a photorealistic, natural lifestyle portrait of an adult using an ultra-compact electronic automatic nail care device. "
-            "The device is extremely compact and small. Demonstrator can easily hold it using thumb and index finger. "
-            "Refer carefully to the form factor in the reference images, specifically the integrated, non-protruding circular grooming slot on the top surface. "
-            "The scene features a smiling male or female, aged 20 to 60 of random ethnicities, in a softly lit, warm residential setting, such as a cozy home vanity, a clean natural-light bathroom, or a comfortable bedroom seating area. "
-            "The camera framing captures the person's face, upper body, and both hands in a natural, relaxed posture, with varied hairstyles and casual clothing styles suitable for the setting. "
-            "The demonstrator is holding the tiny device delicately with the person's fingers, demonstrating its use by gently placing the person's opposite fingertip against the smooth styling surface. "
-            "The device has a smooth, contoured, silver-grey and black body with NO protruding lever parts, "
-            "featuring an integrated circular grooming area and clear window on the top face and also two circular grey buttons at the center of the device. "
-            "The background features a soft, diffused aesthetic with a shallow depth of field, keeping the focus on the person's interaction and natural smile. "
-            "High-quality photorealistic lighting on the device, smooth skin, and perfectly manicured nails. NO Brand Logo or Brand Text. "
-            "Strictly follow the product design from references. "
-            "The demonstrator should only have 2 hands in the frame. "
-        ),
-        "Baby Nail File": (
-            f"""
-            You are an expert product photographer. Create a luxurious, soft-focus lifestyle commercial image of a gentle electric baby nail file being used by a smiling adult guardian on the tiny finger of {chosen_age}.
-            Ensure the Baby nail file is being used on the child's own finger.
-            Ensure there are no partial guardian or ghost in the frame. No hands coming out of nowhere.
-            There should only be one guardian and one baby in the image. 
-            The background should be a minimalist, modern nursery setting with clean lines, Scandinavian design, or warm pastel tones, featuring various plush textiles. 
-            Soft, diffuse natural light, close-up details on the file's material, photorealistic, 8k. 
-            The product body is entirely yellow with a perfectly smooth, seamless body and flush edges. 
-            The top surface nail file is a circular flat disc, and the very top surface color is strictly {chosen_color}, and it is being used gently to trim the child's nail. 
-            The device features only a simple duck graphic. 
-            Crucially, the entire image surface is clean and completely free of any text, brand names, or logos.
-            The guardian should have only 2 hands.
-            The baby should have only 2 hands.
-            """
-        ),
-        "Baby Sculpting Device": (
-            """
-            A professional commercial product photograph in a luxury setting, rendered in ultra-realistic 8k resolution with shallow depth of field and soft ambient indoor lighting in gentle pastel tones.
-            The scene is a clean changing station countertop with varying marble patterns, and features a smiling woman, of random ethnicities and ages from young adult to mid-30s, seated at the counter.
-
-            THE PRODUCT (copy its shape exactly from the reference images):
-            A compact, palm-sized facial sculpting device shaped like a mushroom or a doorknob lying on its side. It has NO handle, NO stick, NO long grip and is NOT a wand or paddle.
-            It has three parts, in a straight line:
-            1. FRONT: a large, smooth, glossy white convex dome. This dome is the part that touches the skin.
-            2. MIDDLE: a short, narrow white neck connecting the dome to the back. This neck is the only place she holds it.
-            3. BACK: a smaller flat circular face made of glossy black, with exactly FIVE white arc-shaped segment buttons arranged in a curved row around its edge.
-            The dome is noticeably wider than the black back face. The whole device is no longer than her hand.
-
-            HOW IT IS HELD:
-            She holds it between her thumb and fingers by the narrow neck, with the white dome pressed against her cheek or jawline.
-            The device points sideways, away from her face, so the camera sees it from the side: the white dome against her skin and the black face with the five white buttons at the outer end.
-
-            On the countertop in the foreground, among the crystal-clear reflections, a curated collection of high-end baby accessories (such as a wooden brush, organic muslin cloths, a single boutique lotion bottle, and a different colored storage pouch) is arranged, without any additional devices.
-            There are absolutely no brand logos or text on the device, the woman, or any accessories.
-            There is no face or picture printed on the device.
-            There is only one device in the whole frame, and it is in the woman's hand.
-            The woman has exactly two hands and five fingers on each hand.
-            """
-        ),
-        "Baby Stroller Organizer": (
-            "You are an expert product photographer. "
-            "Collect all reference images and analyze them carefully, then generate a "
-            "premium commercial placement shot of a sophisticated, durable black fabric baby stroller organizer attached by only two straps on each side "
-            "to the leather-wrapped handle of an expensive urban stroller. The organizer is packed with organized "
-            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio, "
-            "bright daylight, commercial quality, sharp detail focus. "
-            "Create a unique image that generate a unique scenario fitting the product. "
-            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer. "
-            "The demonstrator should be either a woman or man **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s). "
-            "**NO Brand Logo or Brand Text needed on the image** "
-            "**Strictly follow the product design from references** "
-            "**There are no pocket or pouch cup holder on both sides, strictly follow the designs from the reference images** "
-            "The demonstrator should have only 2 hands. "
-        ),
-        "Breast Pumps": (
-            "You are an expert product photographer. "
-            "A smiling woman, age 25 to 35 of diverse ethnicities, is seated on a comfortable bed in a peaceful, "
-            "minimalist bedroom with soft morning window daylight. She is wearing a soft grey ribbed tank top with a modern, ergonomic, wireless breast pump discreetly "
-            "tucked inside the neckline of her top, demonstrating its wearable, hands-free design. "
-            "She has one hand gently resting near the pump with a natural, peaceful expression. Warm neutral tones, photorealistic, 8k resolution, highly detailed. "
-            "**NO Brand Logo or Brand Text needed on the image** "
-            "Create a unique image that generate a unique scenario fitting the product. "
-            "**Strictly follow the product design from references** "
-            "**Ensure you have the breast pumps placed on top of the breasts with correct position and inside and covered by the tops** "
-            "The breast pumps has a circular black screens on top displaying time with four white buttons featuring different features. "
-            "The demonstrator should only have 2 hands. "
-        ),
-        "Gray Stroller Organizer": (
-            "You are an expert product photographer. "
-            "Collect all reference images and analyze them carefully, then generate a "
-            "premium commercial placement shot of a sophisticated, durable fabric baby stroller organizer attached "
-            "to the leather-wrapped handle of an expensive urban stroller. The organizer is packed with organized "
-            "baby essentials (bottles, wipes, small toys). Blurred background of a chic metropolitan cafe patio, "
-            "bright daylight, commercial quality, sharp detail focus. "
-            "Create a unique image that generate a unique scenario fitting the product. "
-            "Generate new things that being put in the organizer, do not put the same thing always in the stroller organizer. "
-            "The demonstrator should be a smiling man or woman **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-50s). "
-            "**NO Brand Logo or Brand Text needed on the image** "
-            "**Strictly follow the product design from references** "
-            "There are no cup holder on sides, strictly follow the designs from the reference images. "
-            "The demonstrator should have only 2 hands. "
-        ),
-        "Inflatable Baby Seat": (
-            "You are an expert product photographer. "
-            "Collect all reference images and analyze them carefully, then generate "
-            "a warm, inviting commercial lifestyle shot of an inflatable baby seat resting safely on a soft living room rug. "
-            "Natural ambient sunlight, cheerful modern home interior, crisp textures, sharp focus, 8k resolution. "
-            "The primary logo on the inflatable seat must be rendered clearly and visible. "
-            "Nice to have baby playfully sitting on it and behaving some random happy faces or emotions and possibly holding some toys. "
-            "The logo LUFFCABO with an anchor on top is needed to be shown on the product in the black color. "
-            "**The Brand logo must be clearly seen, LUFFCABO and an anchor on top need to be clearly seen** "
-            "Create a unique image that generate a unique scenario fitting the product. "
-            "Strictly follow the product design from references. "
-            "Ensure the guardian does not pass through the inflatable baby seat; the guardian stays around the baby. "
-            "Double check the logo text LUFFCABO. "
-            "The guardian should have only 2 hands. "
-            "The baby should have only 2 hands. "
-        ),
-        "LED Beauty Mask": (
-            "You are an expert product photographer. "
-            "Collect all reference images and analyze them carefully, then generate a "
-            "luxury cosmetic product commercial photograph featuring a sleek, multi-layered LED beauty mask. The mask is "
-            "displayed on a polished marble vanity top in a high-end modern bathroom. Soft, diffuse light, close-up details "
-            "on the LED arrays within the material, photorealistic, 8k. "
-            "The output image should purely just an LED mask put on the demonstrator face without any effect. "
-            "Have a women **of diverse ethnicities and across a broad age range (e.g., from young adult to mid-40s) holding it or putting on their face is the best. "
-            "**NO Brand Logo or Brand Text needed on the image** "
-            "Create a unique image that generate a unique scenario fitting the product. "
-            "Strictly follow the product design from references. "
-            "There should only have one woman in the frame. "
-            "The demonstrator should have only 2 hands. "
-        ),
-    }
 
 
 # --------------------------------------------------------------------------- #
@@ -311,14 +180,24 @@ def load_reference_images(product_dir: Path) -> list[Image.Image]:
     return images
 
 
+def build_custom_prompts(chosen_color: str = "", chosen_age: str = "") -> dict[str, str]:
+    """Empty: every product now has its own prompt module (see resolve_prompt).
+    Kept so callers that still pass custom_prompts, like regenerate_helpers.py, keep working."""
+    return {}
+
+
 def resolve_prompt(product_name: str, custom_prompts: dict[str, str], arabic_variant: bool = False) -> str:
     """Get the tailored prompt for a product, falling back to a generic one."""
     base_key = clean_key(product_name)
-    # Cup holders and carriers build a fresh random scene on every call.
+    # Each prompt module builds a fresh random scene on every call.
     if base_key in CUP_HOLDER_PRODUCTS:
         return build_cup_holder_prompt(base_key, arabic=arabic_variant)
     if base_key in CARRIER_PRODUCTS:
         return build_carrier_prompt(base_key, arabic=arabic_variant)
+    if base_key in ORGANIZER_PRODUCTS:
+        return build_organizer_prompt(base_key, arabic=arabic_variant)
+    if base_key in SCENE_PRODUCTS:
+        return build_scene_prompt(base_key, arabic=arabic_variant)
     prompt = custom_prompts.get(
         base_key,
         f"Professional commercial advertising photography of a parent using a {base_key}. {GLOBAL_GUIDANCE}",
@@ -971,8 +850,7 @@ def main() -> int:
     if tips_topic:
         assignments.append((f"Parenting Tips: {tips_topic['title']}", False, TIPS_SLOT))
 
-    color_age = random.choice(COLOR_AGE_PAIRS)
-    custom_prompts = build_custom_prompts(color_age["color"], color_age["age"])
+    custom_prompts = build_custom_prompts()  # empty: every product has its own prompt module
 
     log.info("Batch %s (week starting Sunday %s)", batch_id, batch_id)
     entries: list[dict] = []
