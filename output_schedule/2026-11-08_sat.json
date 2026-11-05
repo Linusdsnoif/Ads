@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-11-08",
+  "slot": "sat",
+  "product_name": "Gray Stroller Organizer(GSO)",
+  "arabic_variant": false,
+  "day": "Saturday",
+  "city": "Perth",
+  "country": "Australia",
+  "language": "English",
+  "timezone": "Australia/Perth",
+  "scheduled_local": "2026-11-14T07:00:00+08:00",
+  "scheduled_utc": "2026-11-13T23:00:00+00:00",
+  "image": null,
+  "caption": null,
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

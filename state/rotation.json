@@ -1,0 +1,43 @@
+{
+  "products": {
+    "cycle": 0,
+    "remaining": [
+      "Gray Baby Carrier(GBC)",
+      "LED Beauty Mask(LBM)",
+      "Baby Nail File(BNF)",
+      "Automatic Nail Clipper(ENC)",
+      "Breast Pumps(BP)",
+      "Gray stroller cup holder(Gtray)",
+      "Breathable Baby CarrierM(BCM)",
+      "Detachable Cup Holder(DCH)",
+      "Blue Stroller Cup Holder(Btray)",
+      "Baby Sculpting Device(BSM)"
+    ],
+    "done": [
+      "Baby Stroller Organizer(BSO)",
+      "Gray Stroller Organizer(GSO)",
+      "Inflatable Baby Seat(IBS)",
+      "Breathable Baby Carrier(BBC)"
+    ],
+    "recent": [
+      "Automatic Nail Clipper(ENC)",
+      "Baby Nail File(BNF)",
+      "Breathable Baby CarrierM(BCM)",
+      "Breathable Baby Carrier(BBC)",
+      "Baby Stroller Organizer(BSO)",
+      "Gray Stroller Organizer(GSO)",
+      "Inflatable Baby Seat(IBS)",
+      "Breathable Baby Carrier(BBC)"
+    ]
+  },
+  "batches": {
+    "2026-11-08": {
+      "products": [
+        "Baby Stroller Organizer(BSO)",
+        "Gray Stroller Organizer(GSO)",
+        "Inflatable Baby Seat(IBS)",
+        "Breathable Baby Carrier(BBC)"
+      ]
+    }
+  }
+}

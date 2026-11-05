@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-11-08",
+  "slot": "thu",
+  "product_name": "Inflatable Baby Seat(IBS)",
+  "arabic_variant": false,
+  "day": "Thursday",
+  "city": "Stockholm",
+  "country": "Sweden",
+  "language": "Swedish",
+  "timezone": "Europe/Stockholm",
+  "scheduled_local": "2026-11-12T07:00:00+01:00",
+  "scheduled_utc": "2026-11-12T06:00:00+00:00",
+  "image": null,
+  "caption": null,
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}
