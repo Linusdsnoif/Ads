@@ -1,19 +1,19 @@
 {
   "batch_id": "2026-10-11",
   "slot": "sun",
-  "product_name": "Baby Sculpting Device(BSM)",
-  "arabic_variant": true,
+  "product_name": "Gray stroller cup holder(Gtray)",
+  "arabic_variant": false,
   "day": "Sunday",
-  "city": "Dubai",
-  "country": "United Arab Emirates",
-  "language": "Arabic",
-  "timezone": "Asia/Dubai",
-  "scheduled_local": "2026-10-12T03:00:00+04:00",
-  "scheduled_utc": "2026-10-11T23:00:00+00:00",
-  "image": "modeled_Baby_Sculpting_Device_ARABIC_2.jpg",
-  "caption": "modeled_Baby_Sculpting_Device_ARABIC_2.txt",
+  "city": "Los Angeles",
+  "country": "United States",
+  "language": "English",
+  "timezone": "America/Los_Angeles",
+  "scheduled_local": "2026-10-18T07:00:00-07:00",
+  "scheduled_utc": "2026-10-18T14:00:00+00:00",
+  "image": "modeled_Gray_stroller_cup_holder_1.jpg",
+  "caption": "modeled_Gray_stroller_cup_holder_1.txt",
   "review": "approved",
-  "regenerations": 1,
+  "regenerations": 0,
   "publish": {
     "facebook": true,
     "instagram_feed": true,
@@ -22,6 +22,6 @@
     "done": true,
     "stopped": false,
     "missed": false,
-    "posted_at": "2026-10-12T00:31:32.692056+00:00"
+    "posted_at": "2026-10-18T14:29:29.239177+00:00"
   }
 }

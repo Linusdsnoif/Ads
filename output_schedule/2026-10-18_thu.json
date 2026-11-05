@@ -12,16 +12,16 @@
   "scheduled_utc": "2026-10-22T05:00:00+00:00",
   "image": "modeled_Blue_Stroller_Cup_Holder_1.jpg",
   "caption": "modeled_Blue_Stroller_Cup_Holder_1.txt",
-  "review": "pending",
+  "review": "approved",
   "regenerations": 0,
   "publish": {
-    "facebook": false,
-    "instagram_feed": false,
-    "threads": false,
-    "attempts": 0,
-    "done": false,
+    "facebook": true,
+    "instagram_feed": true,
+    "threads": true,
+    "attempts": 1,
+    "done": true,
     "stopped": false,
     "missed": false,
-    "posted_at": null
+    "posted_at": "2026-10-22T05:27:24.889566+00:00"
   }
 }
