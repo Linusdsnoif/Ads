@@ -10,10 +10,10 @@
   "timezone": "America/New_York",
   "scheduled_local": "2026-11-10T07:00:00-05:00",
   "scheduled_utc": "2026-11-10T12:00:00+00:00",
-  "image": "manual_2026-11-08_tue.jpg",
-  "caption": "manual_2026-11-08_tue.txt",
-  "review": "approved",
-  "regenerations": 0,
+  "image": "modeled_Baby_Stroller_Organizer_1.jpg",
+  "caption": "modeled_Baby_Stroller_Organizer_1.txt",
+  "review": "pending",
+  "regenerations": 1,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
@@ -23,6 +23,5 @@
     "stopped": false,
     "missed": false,
     "posted_at": null
-  },
-  "source": "manual"
+  }
 }
