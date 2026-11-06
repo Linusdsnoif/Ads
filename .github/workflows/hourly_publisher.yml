@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: main   # the newest state, even if this run waited in the queue
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -41,7 +43,7 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
-          PUBLISH_GRACE_HOURS: '4' 
+          PUBLISH_GRACE_HOURS: '4'
         run: python publish_social.py
 
       - name: Commit and push publish state
@@ -52,7 +54,13 @@ jobs:
           echo "__pycache__/" >> .git/info/exclude
           git add -A
           git commit -m "Update publish status" || { echo "No changes"; exit 0; }
+          # If another workflow changed the same lines, keep THIS run's changes: they record
+          # what was just posted, and losing them would make the next run post it again.
+          # (During a rebase, -X theirs means "the commit being replayed", i.e. this run's.)
           for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push && break
-            echo "Push rejected, retrying in 10s..."; sleep 10
+            if git pull --rebase -X theirs origin main && git push; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            echo "Push rejected (try $i of 5), retrying in 10s..."; sleep 10
           done
+          echo "::error::Could not save the publish status. Check the schedule files before the next run."
+          exit 1

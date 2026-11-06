@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -46,6 +48,9 @@ jobs:
           git add -A
           git commit -m "Weekly batch: new images awaiting review" || { echo "No changes"; exit 0; }
           for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push && break
-            echo "Push rejected, retrying in 10s..."; sleep 10
+            if git pull --rebase origin main && git push; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            echo "Push rejected (try $i of 5), retrying in 10s..."; sleep 10
           done
+          echo "::error::Could not push after 5 tries, so this week's batch was NOT saved."
+          exit 1

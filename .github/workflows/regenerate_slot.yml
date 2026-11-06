@@ -7,9 +7,9 @@ on:
         description: 'Which post to redo'
         required: true
         type: choice
-        options: [sun, tue, thu, sat]
+        options: [sun, tue, wed, thu, sat]
       batch_id:
-        description: 'Batch id (Sunday date, e.g. 2026-10-11). Leave empty for the latest batch.'
+        description: 'Batch id (Sunday date, e.g. 2026-10-11). Empty = the NEWEST batch, which may not be the next post.'
         required: false
         default: ''
       caption_only:
@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -44,22 +46,33 @@ jobs:
       - name: Regenerate
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          SLOT: ${{ inputs.slot }}
+          BATCH_ID: ${{ inputs.batch_id }}
+          CAPTION_ONLY: ${{ inputs.caption_only }}
         run: |
-          ARGS="--slot ${{ inputs.slot }}"
-          if [ -n "${{ inputs.batch_id }}" ]; then ARGS="$ARGS --batch ${{ inputs.batch_id }}"; fi
-          if [ "${{ inputs.caption_only }}" = "true" ]; then ARGS="$ARGS --caption-only"; fi
-          python regenerate_helpers.py $ARGS
-          python regenerate_helpers.py --list $( [ -n "${{ inputs.batch_id }}" ] && echo --batch ${{ inputs.batch_id }} )
+          ARGS=(--slot "$SLOT")
+          LIST_ARGS=(--list)
+          if [ -n "$BATCH_ID" ]; then ARGS+=(--batch "$BATCH_ID"); LIST_ARGS+=(--batch "$BATCH_ID"); fi
+          if [ "$CAPTION_ONLY" = "true" ]; then ARGS+=(--caption-only); fi
+          status=0
+          python regenerate_helpers.py "${ARGS[@]}" || status=$?
+          python regenerate_helpers.py "${LIST_ARGS[@]}"   # show the batch even if the redo failed
+          exit $status
 
       - name: Commit and push
         if: always()
+        env:
+          SLOT: ${{ inputs.slot }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "__pycache__/" >> .git/info/exclude
           git add -A
-          git commit -m "Regenerated slot ${{ inputs.slot }} (awaiting review)" || { echo "No changes"; exit 0; }
+          git commit -m "Regenerated slot $SLOT (awaiting review)" || { echo "No changes"; exit 0; }
           for i in 1 2 3 4 5; do
-            git pull --rebase origin main && git push && break
-            echo "Push rejected, retrying in 10s..."; sleep 10
+            if git pull --rebase origin main && git push; then exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            echo "Push rejected (try $i of 5), retrying in 10s..."; sleep 10
           done
+          echo "::error::Could not push after 5 tries, so these changes were NOT saved."
+          exit 1
