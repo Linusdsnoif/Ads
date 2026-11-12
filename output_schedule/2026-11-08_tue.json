@@ -1,6 +1,6 @@
 {
   "batch_id": "2026-11-08",
-  "slot": "tue",
+  "slot": "thur",
   "product_name": "Baby Stroller Organizer(BSO)",
   "arabic_variant": false,
   "day": "Tuesday",
@@ -8,8 +8,8 @@
   "country": "USA",
   "language": "English",
   "timezone": "America/New_York",
-  "scheduled_local": "2026-11-10T07:00:00-05:00",
-  "scheduled_utc": "2026-11-10T12:00:00+00:00",
+  "scheduled_local": "2026-11-12T20:00:00-05:00",
+  "scheduled_utc": "2026-11-13T01:00:00+00:00",
   "image": "modeled_Baby_Stroller_Organizer_1.jpg",
   "caption": "modeled_Baby_Stroller_Organizer_1.txt",
   "review": "approved",
@@ -21,7 +21,7 @@
     "attempts": 0,
     "done": false,
     "stopped": false,
-    "missed": true,
+    "missed": false,
     "posted_at": null
   }
 }
