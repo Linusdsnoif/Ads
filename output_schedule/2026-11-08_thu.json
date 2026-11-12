@@ -3,13 +3,13 @@
   "slot": "thu",
   "product_name": "Inflatable Baby Seat(IBS)",
   "arabic_variant": false,
-  "day": "Thursday",
+  "day": "Friday",
   "city": "Rome",
   "country": "Italy",
   "language": "Italian",
   "timezone": "Europe/Rome",
-  "scheduled_local": "2026-11-12T07:00:00+01:00",
-  "scheduled_utc": "2026-11-12T06:00:00+00:00",
+  "scheduled_local": "2026-11-13T07:00:00+01:00",
+  "scheduled_utc": "2026-11-13T06:00:00+00:00",
   "image": "modeled_Inflatable_Baby_Seat_2.jpg",
   "caption": "modeled_Inflatable_Baby_Seat_2.txt",
   "review": "approved",
@@ -21,7 +21,7 @@
     "attempts": 0,
     "done": false,
     "stopped": false,
-    "missed": true,
+    "missed": false,
     "posted_at": null
   }
 }
