@@ -162,7 +162,7 @@ COMMON_CHECKS = [
 # --------------------------------------------------------------------------- #
 ETHNICITIES = [
     "East Asian", "South Asian", "Southeast Asian", "Black", "Latino",
-    "Middle Eastern", "white", "mixed-race", "Pacific Islander",
+    "Middle Eastern", "white", "mixed-race"
 ]
 
 # Where the guardian's second hand goes when the activity only uses one. Each
