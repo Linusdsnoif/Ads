@@ -2,10 +2,6 @@
   "products": {
     "cycle": 0,
     "remaining": [
-      "Gray Baby Carrier(GBC)",
-      "LED Beauty Mask(LBM)",
-      "Baby Nail File(BNF)",
-      "Automatic Nail Clipper(ENC)",
       "Breast Pumps(BP)",
       "Gray stroller cup holder(Gtray)",
       "Breathable Baby CarrierM(BCM)",
@@ -17,17 +13,21 @@
       "Baby Stroller Organizer(BSO)",
       "Gray Stroller Organizer(GSO)",
       "Inflatable Baby Seat(IBS)",
-      "Breathable Baby Carrier(BBC)"
+      "Breathable Baby Carrier(BBC)",
+      "Gray Baby Carrier(GBC)",
+      "LED Beauty Mask(LBM)",
+      "Baby Nail File(BNF)",
+      "Automatic Nail Clipper(ENC)"
     ],
     "recent": [
-      "Automatic Nail Clipper(ENC)",
-      "Baby Nail File(BNF)",
-      "Breathable Baby CarrierM(BCM)",
-      "Breathable Baby Carrier(BBC)",
       "Baby Stroller Organizer(BSO)",
       "Gray Stroller Organizer(GSO)",
       "Inflatable Baby Seat(IBS)",
-      "Breathable Baby Carrier(BBC)"
+      "Breathable Baby Carrier(BBC)",
+      "Gray Baby Carrier(GBC)",
+      "LED Beauty Mask(LBM)",
+      "Baby Nail File(BNF)",
+      "Automatic Nail Clipper(ENC)"
     ]
   },
   "batches": {
@@ -38,6 +38,40 @@
         "Inflatable Baby Seat(IBS)",
         "Breathable Baby Carrier(BBC)"
       ]
+    },
+    "2026-11-15": {
+      "products": [
+        "Gray Baby Carrier(GBC)",
+        "LED Beauty Mask(LBM)",
+        "Baby Nail File(BNF)",
+        "Automatic Nail Clipper(ENC)"
+      ],
+      "tips": [
+        "Traveling with a Baby"
+      ]
     }
+  },
+  "tips": {
+    "cycle": 0,
+    "remaining": [
+      "Pumping Made Easier",
+      "Summer Outings with Baby",
+      "Diaper Bag Checklist",
+      "Snack Time on the Go",
+      "Baby Carrier Selecting Tips",
+      "Hands-Free Parenting Hacks",
+      "Stress-Free Nail Care",
+      "Self-Care for New Moms",
+      "Baby Sitting Practice",
+      "Stroller Walk Essentials",
+      "Safe Babywearing Checklist",
+      "Healthy Nails for the Family"
+    ],
+    "done": [
+      "Traveling with a Baby"
+    ],
+    "recent": [
+      "Traveling with a Baby"
+    ]
   }
 }

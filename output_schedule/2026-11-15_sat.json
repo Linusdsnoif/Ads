@@ -1,0 +1,27 @@
+{
+  "batch_id": "2026-11-15",
+  "slot": "sat",
+  "product_name": "LED Beauty Mask(LBM)",
+  "arabic_variant": false,
+  "day": "Saturday",
+  "city": "Birmingham",
+  "country": "UK",
+  "language": "English",
+  "timezone": "Europe/London",
+  "scheduled_local": "2026-11-21T07:00:00+00:00",
+  "scheduled_utc": "2026-11-21T07:00:00+00:00",
+  "image": "modeled_LED_Beauty_Mask_1.jpg",
+  "caption": "modeled_LED_Beauty_Mask_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  }
+}

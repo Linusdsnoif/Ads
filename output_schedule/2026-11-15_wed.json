@@ -1,0 +1,30 @@
+{
+  "batch_id": "2026-11-15",
+  "slot": "wed",
+  "product_name": "Parenting Tips: Traveling with a Baby",
+  "arabic_variant": false,
+  "day": "Wednesday",
+  "city": "Brisbane",
+  "country": "Australia",
+  "language": "English",
+  "timezone": "Australia/Brisbane",
+  "scheduled_local": "2026-11-18T07:00:00+10:00",
+  "scheduled_utc": "2026-11-17T21:00:00+00:00",
+  "image": "modeled_Parenting_Tips_Traveling_with_a_Baby_1.jpg",
+  "caption": "modeled_Parenting_Tips_Traveling_with_a_Baby_1.txt",
+  "review": "pending",
+  "regenerations": 0,
+  "publish": {
+    "facebook": false,
+    "instagram_feed": false,
+    "threads": false,
+    "attempts": 0,
+    "done": false,
+    "stopped": false,
+    "missed": false,
+    "posted_at": null
+  },
+  "post_type": "tips",
+  "tips_topic": "Traveling with a Baby",
+  "text_check": "passed"
+}
