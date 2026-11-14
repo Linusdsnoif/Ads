@@ -272,6 +272,10 @@ NAIL_FILE_PAIRS = [
     {"color": "pink", "age": "a young child between 3 and 6 years old"},
     {"color": "grey", "age": "a baby between 6 and 18 months old, during a gentle polishing session"},
 ]
+# Every pose gives each of the guardian's hands one job: one steadies the
+# child's hand, the other holds the nail file. When a pose says "files with the
+# other hand" without saying that hand holds the device, the model can put both
+# hands on the child's fingers and invent a third hand to hold the file.
 # (place, indoor, pose that must go with it or None)
 NAIL_FILE_SETTINGS = [
     ("a minimalist Scandinavian nursery with light wood furniture and plush textiles", True, None),
@@ -284,18 +288,27 @@ NAIL_FILE_SETTINGS = [
     ("a soft play mat on the living room floor", True, None),
     ("a cozy bedroom just after bath time, the child wrapped in a hooded towel", True, None),
     ("a calm nursery at nap time, the child resting drowsily in the crib", True,
-     "The guardian leans over the crib rail, steadying the tiny hand with one hand and filing with the other "
-     "while the child rests."),
+     "The guardian leans over the crib rail, steadying the tiny hand with one hand and holding the nail file in "
+     "the other while the child rests."),
 ]
 NAIL_FILE_POSES = [
-    "The child sits on the guardian's lap, leaning back against their chest; the guardian holds the tiny hand "
-    "steady with one hand and files with the other.",
+    "The child sits on the guardian's lap, leaning back against their chest, held securely between the "
+    "guardian's forearms; the guardian holds the tiny hand steady with one hand and holds the nail file in the "
+    "other.",
     "The child lies on their back on a soft surface; the guardian sits or kneels beside them, holds the tiny hand "
-    "steady with one hand and files with the other.",
-    "The guardian cradles the child in one arm, using that hand to steady the tiny fingers, and files with the "
-    "other hand.",
-    "The child sits facing the guardian, who holds the tiny hand steady with one hand and files with the other.",
+    "steady with one hand and holds the nail file in the other.",
+    "The guardian cradles the child in one arm, using that hand to steady the tiny fingers, and holds the nail "
+    "file in the other hand.",
+    "The child sits facing the guardian, who holds the tiny hand steady with one hand and holds the nail file in "
+    "the other.",
 ]
+# Added to every pose, so the file always has an owner the camera can see.
+NAIL_FILE_GRIP = (
+    "The nail file is in the guardian's own hand: their fingers wrap around the back of its yellow body, the duck "
+    "graphic faces outward, and the disc gently touches the edge of one of the child's fingernails. This arm stays "
+    "in the frame from the elbow down, so the hand holding the file is clearly the guardian's, joined at the wrist "
+    "to their own sleeve."
+)
 NAIL_FILE_ANGLES = [
     "Close-up from the side at the child's eye level: the hands and file sharp in the foreground, both faces "
     "softly visible. 85mm look.",
@@ -319,16 +332,17 @@ def _nail_file(arabic: bool):
     )
     use = (
         "HOW IT IS USED:\n"
-        f"{fixed_pose or random.choice(NAIL_FILE_POSES)} The disc touches the edge of the child's own fingernail, "
-        "gently. Adapt the pose to what a child of this age can safely do: a young infant lies down or is held "
-        "and never sits unsupported."
+        f"{fixed_pose or random.choice(NAIL_FILE_POSES)} {NAIL_FILE_GRIP} Adapt the pose to what a child of this "
+        "age can safely do: a young infant lies down or is held and never sits unsupported."
     )
     people = (f"THE PEOPLE:\nThe guardian: {_person(gender, (20, 31, 60), 'home', arabic)} Expression: "
               f"{random.choice(EXPRESSIONS)}. {_child(pair['age'], arabic)}")
     rules = [
         "Exactly one guardian and one child, with no partial people, ghost figures or hands coming in from out of frame.",
-        "The guardian has exactly two hands and the child exactly two hands, with five fingers each.",
-        "Only one nail file in the image.",
+        "The guardian has exactly two arms and two hands: one holds the child's hand, the other holds the nail "
+        "file. The child has exactly two hands. Every hand has five fingers.",
+        "Only one nail file in the image, held by the guardian alone, in a hand visibly joined to the guardian's "
+        "own arm. No other hand holds or touches it.",
         "No text, brand names or logos anywhere; the device shows only the simple duck graphic.",
     ]
     return [product, use, people, _setting(place, indoor, arabic),
@@ -524,8 +538,14 @@ def _seat(arabic: bool):
 # =========================================================================== #
 MASK_PRODUCT = (
     "THE PRODUCT (copy it exactly from the reference images):\n"
-    "A sleek, multi-layered LED beauty mask, with close-up detail of the LED arrays within the material. Show the "
-    "mask as it really looks, with no added glow, light beams or special effects."
+    "A soft, flexible LED beauty mask shaped to the face. Its outer front is matte black silicone printed with a "
+    "fine copper-gold diamond lattice, with a small four-pointed star wherever the lines cross, and plain black "
+    "bands along the top and bottom edges. It has two eye openings, a triangle outlined over the nose, a mouth "
+    "opening, a small oval slot at the top of the forehead, and small strap tabs at the sides.\n"
+    "ORIENTATION: in every shot, the patterned front of the mask faces the camera. Only the outer front is ever "
+    "seen. The inside of the mask, the side that rests against the skin, never shows: no clear layer, no LED "
+    "chips, no wiring. The mask is never flipped over, laid flat, or tilted far enough to show its inside.\n"
+    "Show the mask as it really looks, with no added glow, light beams or special effects."
 )
 MASK_SETTINGS = [
     ("a polished marble vanity in a high-end modern bathroom", True),
@@ -542,13 +562,16 @@ MASK_POSES = [
     ("wearing the mask, leaning back and relaxed, hands resting in her lap", False),
     ("wearing the mask while sitting upright, holding a cup of tea in both hands", False),
     ("wearing the mask while reading a book", False),
-    ("holding the mask up in both hands just in front of her face, about to put it on", True),
-    ("holding the mask in her lap after a session, her skin fresh and naturally glowing", True),
-    ("putting the mask on, settling it into place with both hands", False),
+    ("holding the mask up beside her face with one hand, its patterned front turned toward the camera, about "
+     "to put it on", True),
+    ("after a session, holding the mask upright on her knees by its edges, its patterned front facing the "
+     "camera, her skin fresh and naturally glowing", True),
+    ("putting the mask on, settling it into place with both hands, its patterned front facing outward", False),
 ]
 MASK_ANGLES = [
     "Three-quarter view at eye level. 50mm look.",
-    "Side profile showing the mask's shape and how it sits on the face. 85mm look.",
+    "Three-quarter side view showing how the mask curves around the face, its patterned front still clearly "
+    "visible. 85mm look.",
     "Slightly high angle looking down as she sits or reclines. 35mm look.",
     "Medium close-up from the chest up, the mask's details sharp. 85mm look.",
     "Wider shot showing her in the room, still close enough to see the mask's details. 35mm look.",

@@ -19,6 +19,10 @@ Choices are paired so each scene stays logical:
   - babies are 6-15 months old, old enough to face outward with steady head control
   - the Arabic (Gulf) variant uses a Gulf Arab guardian in Gulf locations, in
     modern everyday clothes with no head covering or traditional dress
+  - the hip-seat carriers have exactly one storage pouch, on the guardian's
+    right hip; image models tend to add a second pouch on the center front of
+    the hip seat (often copying the circular pouch close-up in the reference
+    photo), so the design text rules that out explicitly
 """
 
 import logging
@@ -30,11 +34,17 @@ log = logging.getLogger("product_image_gen")
 # Product designs (design only; the scene is built separately)
 # --------------------------------------------------------------------------- #
 # Gray Baby Carrier and Breathable Baby Carrier are the same hip-seat carrier
-# in two colorways, so they share how the baby sits in it.
+# in two colorways, so they share how the baby sits in it and the pouch check.
 _HIP_SEAT_FIT = (
-    "The baby faces outward, its back against the guardian's chest, and sits securely on the hip seat. The "
-    "folded head flap sits just under the baby's chin, the baby's arms come out over the sides of the panel, and "
-    "the legs hang naturally through the leg openings."
+    "The baby faces outward, its back against the guardian's chest, and sits securely on the plain center of the "
+    "hip seat. The folded head flap sits just under the baby's chin, the baby's arms come out over the sides of the "
+    "panel, and the legs hang naturally through the leg openings."
+)
+
+_POUCH_CHECK = (
+    "There is exactly one storage pouch, on the side at the guardian's right hip (the viewer's left), beside the "
+    "baby's leg. The hip seat directly below and between the baby's legs is plain fabric with no zipper, pocket "
+    "or logo."
 )
 
 CARRIER_PRODUCTS = {
@@ -56,18 +66,22 @@ CARRIER_PRODUCTS = {
             "the baby's legs. At each leg opening sits a padded, wing-shaped cushion of dark charcoal 3D mesh "
             "(about #6E727C).\n"
             "- Hip seat: a tall, firm, padded taupe-gray waist belt, about as tall as a hand is long, worn around the "
-            "guardian's waist directly under the baby. The center front of the hip seat, directly below the baby, "
-            "is plain, smooth taupe-gray fabric.\n"
-            "- Storage pouch: a taupe-gray zippered pouch built into the hip seat on the guardian's right hip (the "
-            "viewer's left), on the side of the waist well away from the center, with its zipper running "
-            "horizontally along its top edge.\n"
+            "guardian's waist directly under the baby. Its front, from under the baby's legs across to the "
+            "guardian's left hip, is one smooth, unbroken stretch of plain taupe-gray fabric, with no zipper, "
+            "pocket, seam or logo running across it.\n"
+            "- Storage pouch: the hip seat has exactly ONE storage pouch, and it is on the side. It is a taupe-gray "
+            "zippered pouch built into the outer corner of the hip seat at the guardian's right hip (the viewer's "
+            "left), beside the baby's right leg and never under or between the baby's legs. Its zipper runs "
+            "horizontally along its top edge and is the only zipper on the hip seat. The circular inset close-up "
+            "in the reference images shows this same side pouch up close; it is not a second pouch on the front.\n"
             "- Dark accents: the charcoal leg cushions, black snap buttons and elastic loops, and dark charcoal "
             "(about #3A3A3C) webbing adjusters and buckles. Apart from the leg cushions, every visible surface is "
             "smooth, solid canvas.\n"
             "- Branding: a small anchor symbol directly above the word \"LUFFCABO\", printed in muted slate "
             "blue-gray directly onto the taupe fabric, with the fabric visible all around it. Logo 1 is centered on "
-            "the front panel just below the zip panel, about the size of the baby's palm. Logo 2 is very small, in "
-            "the lower front corner of the storage pouch."
+            "the front panel just below the zip panel, about the size of the baby's palm. Logo 2 is very small, on "
+            "the side pouch itself near its lower corner, so it also sits at the guardian's right hip, off to the "
+            "viewer's left of the baby's legs."
         ),
         "fit": _HIP_SEAT_FIT,
         # Clothing colors that stand out against taupe-gray.
@@ -75,7 +89,7 @@ CARRIER_PRODUCTS = {
         "checks": [
             "The shoulder straps are solid smooth taupe-gray from edge to edge.",
             "Below the head flap is a zipped-shut taupe panel, not a mesh window.",
-            "The storage pouch is on the guardian's right hip, and the center front of the hip seat is plain.",
+            _POUCH_CHECK,
             "\"LUFFCABO\" is spelled correctly.",
         ],
     },
@@ -93,16 +107,21 @@ CARRIER_PRODUCTS = {
             "down one side and along its bottom edge. It is a roll-up breathable panel shown zipped shut.\n"
             "- Front panel: below the zip panel, smooth black fabric that narrows between the baby's legs, with "
             "padded black mesh cushions at the leg openings.\n"
-            "- Hip seat: a tall, firm, padded black waist belt worn directly under the baby; its center front is "
-            "plain black fabric.\n"
-            "- Storage pouch: a black zippered pouch built into the hip seat on the guardian's right hip (the "
-            "viewer's left), with its zipper along its top edge.\n"
+            "- Hip seat: a tall, firm, padded black waist belt worn directly under the baby. Its front, from under "
+            "the baby's legs across to the guardian's left hip, is one smooth, unbroken stretch of plain black "
+            "fabric, with no zipper, pocket, seam or logo running across it.\n"
+            "- Storage pouch: the hip seat has exactly ONE storage pouch, and it is on the side. It is a black "
+            "zippered pouch built into the outer corner of the hip seat at the guardian's right hip (the viewer's "
+            "left), beside the baby's right leg and never under or between the baby's legs. Its zipper runs along "
+            "its top edge and is the only zipper on the hip seat. Any circular inset close-up of a pouch in the "
+            "reference images shows this same side pouch up close; it is not a second pouch on the front.\n"
             "- Accents: black webbing and black buckles. The only non-black details are the silver button rims, the "
             "two light-gray tabs and the white logos.\n"
             "- Branding: a small white anchor symbol directly above the word \"LUFFCABO\", screen-printed directly "
             "on the black fabric, with black fabric visible all around it. Logo 1 is centered on the front panel "
-            "just below the zip panel, about the width of the baby's palm. Logo 2 is very small, in the lower "
-            "corner of the storage pouch."
+            "just below the zip panel, about the width of the baby's palm. Logo 2 is very small, on the side pouch "
+            "itself near its lower corner, so it also sits at the guardian's right hip, off to the viewer's left "
+            "of the baby's legs."
         ),
         "fit": _HIP_SEAT_FIT,
         # Clothing colors that stand out against black.
@@ -111,7 +130,7 @@ CARRIER_PRODUCTS = {
             "Every part of the carrier is black except the silver button rims, the two light-gray tabs and the "
             "white logos.",
             "Below the head flap is a zipped-shut black panel, not a mesh window.",
-            "The storage pouch is on the guardian's right hip.",
+            _POUCH_CHECK,
             "\"LUFFCABO\" is spelled correctly.",
         ],
     },
