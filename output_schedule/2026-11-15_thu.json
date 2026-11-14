@@ -10,10 +10,10 @@
   "timezone": "Europe/Rome",
   "scheduled_local": "2026-11-19T07:00:00+01:00",
   "scheduled_utc": "2026-11-19T06:00:00+00:00",
-  "image": "modeled_Baby_Nail_File_1.jpg",
-  "caption": "modeled_Baby_Nail_File_1.txt",
+  "image": "modeled_Baby_Nail_File_2.jpg",
+  "caption": "modeled_Baby_Nail_File_2.txt",
   "review": "pending",
-  "regenerations": 0,
+  "regenerations": 1,
   "publish": {
     "facebook": false,
     "instagram_feed": false,
