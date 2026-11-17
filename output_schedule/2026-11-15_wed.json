@@ -15,14 +15,14 @@
   "review": "approved",
   "regenerations": 0,
   "publish": {
-    "facebook": false,
-    "instagram_feed": false,
-    "threads": false,
-    "attempts": 0,
-    "done": false,
+    "facebook": true,
+    "instagram_feed": true,
+    "threads": true,
+    "attempts": 1,
+    "done": true,
     "stopped": false,
     "missed": false,
-    "posted_at": null
+    "posted_at": "2026-11-17T21:18:10.692956+00:00"
   },
   "post_type": "tips",
   "tips_topic": "Traveling with a Baby",
